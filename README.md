@@ -1,6 +1,6 @@
 # zmd-plugin（enduid-yunzai / TRSS-Yunzai）
 
-终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件。
+终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件，powered by chatgpt codexcli
 
 ## 功能
 
@@ -83,11 +83,11 @@ pnpm add qrcode
 
 ## 免责声明
 
-本项目为非官方工具，与 鹰角网络 (Hypergryph) 及其旗下组织/团体/工作室没有任何关联。游戏图片与数据版权归各自权利人所有。
+本项目为非官方项目，与 鹰角网络 (Hypergryph) 及其旗下组织/团体/工作室没有任何关联。游戏图片与数据版权归各自权利人所有。
 
-本软件按“现状”提供，不保证可用性、稳定性或数据准确性；使用过程中造成的任何数据损失、功能异常或经济损失均由用户自行承担。
+本插件按“现状”提供，不保证可用性、稳定性或数据准确性；使用过程中造成的任何数据损失、功能异常或经济损失均由用户自行承担。
 
-使用本软件需遵守所在地法律法规、游戏/平台服务条款及知识产权要求；如有合规/安全疑虑，请立即停止使用并卸载。
+使用本插件/项目需遵守所在地法律法规、游戏/平台服务条款及知识产权要求；如有合规/安全疑虑，请立即停止使用并卸载。
 
 本项目仅供学习使用，请勿用于商业用途。使用本插件视为同意提供用户凭据，用户凭据仅用于查询游戏数据。使用本插件造成的任何数据滥用行为与作者无关。
 
@@ -97,8 +97,8 @@ pnpm add qrcode
 
 ## 参考
 
-- EndUID：`https://github.com/Loping151/EndUID`
-- BeyondUID：`https://github.com/baiqwerdvd/BeyondUID/tree/master`
-- biligame wiki：`https://wiki.biligame.com/zmd/`
+- EndUID：`https://github.com/Loping151/EndUID`  主要逻辑实现参考
+- BeyondUID：`https://github.com/baiqwerdvd/BeyondUID/tree/master`  抽卡获取/记录逻辑参考
+- biligame wiki：`https://wiki.biligame.com/zmd/` wiki信息获取
 
 如你计划分发，请注意相关上游仓库的许可证要求。
