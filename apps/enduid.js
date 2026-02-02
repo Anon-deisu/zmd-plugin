@@ -952,75 +952,93 @@ export class enduid extends plugin {
     ].join("\n")
 
     try {
-      const ts = currentTs > 0 ? currentTs : Math.floor(Date.now() / 1000)
-      const t = new Date(ts * 1000)
-      const yy = String(t.getFullYear())
-      const mm = String(t.getMonth() + 1).padStart(2, "0")
-      const dd = String(t.getDate()).padStart(2, "0")
-      const hh = String(t.getHours()).padStart(2, "0")
-      const mi = String(t.getMinutes()).padStart(2, "0")
-      const ss = String(t.getSeconds()).padStart(2, "0")
-
-      const staminaPct = clampPercent(staminaCur, staminaTotal)
       const bpCur = safeInt(bp.curLevel)
       const bpTotal = safeInt(bp.maxLevel)
-      const bpPct = clampPercent(bpCur, bpTotal)
       const actCur = safeInt(daily.dailyActivation)
       const actTotal = safeInt(daily.maxDailyActivation)
-      const actPct = clampPercent(actCur, actTotal)
 
-      const name = base.name || account.nickname || "-"
-      const uid = base.roleId || account.uid || "-"
-      const level = base.level ?? "-"
-      const worldLevel = base.worldLevel ?? "-"
-      const time = `${yy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+      const resPath = rel => `../../../../../plugins/enduid-yunzai/resources/${rel}`
 
-      const staminaRate = staminaTotal > 0 ? staminaCur / staminaTotal : 0
-      const bpRate = bpTotal > 0 ? bpCur / bpTotal : 0
-      const actRate = actTotal > 0 ? actCur / actTotal : 0
-      const avatarUrl = String(base.avatarUrl || "").trim()
+      const bgUrl = resPath("enduid/texture2d/end_daily_bg.png")
+      const logoUrl = resPath("enduid/texture2d/end_daily_logo.png")
+      const staminaIconUrl = resPath("enduid/texture2d/end_daily_sanity.png")
+      const bpIconUrl = resPath("enduid/texture2d/end_daily_pass.png")
+      const livenessIconUrl = resPath("enduid/texture2d/end_daily_active.png")
+
+      let pileUrl = ""
+      try {
+        const chars = Array.isArray(detail.chars) ? detail.chars : []
+        const candidates = []
+        for (const c of chars) {
+          const url =
+            c?.charData?.avatarRtUrl ||
+            c?.charData?.avatar_rt_url ||
+            c?.avatarRtUrl ||
+            c?.avatar_rt_url
+          if (url) candidates.push(String(url).trim())
+        }
+        const pick = candidates[Math.floor(Math.random() * candidates.length)]
+        if (pick) pileUrl = pick
+      } catch {}
+
+      const hasBg = !pileUrl
+      if (!pileUrl) pileUrl = bgUrl
+
+      let avatarUrl = String(base.avatarUrl || "").trim()
+      if (!avatarUrl) avatarUrl = pileUrl
+      if (!avatarUrl) avatarUrl = resPath("state/img/default_avatar.jpg")
+
+      const userName = String(base.name || account.nickname || "-").slice(0, 10)
+      const roleId = String(base.roleId || account.uid || "-")
+
+      const staminaPercent = clampPercent(staminaCur, staminaTotal)
+      const bpPercent = clampPercent(bpCur, bpTotal)
+      const actPercent = clampPercent(actCur, actTotal)
+
+      const COLOR_URGENT = "#ff4d4f"
+      const COLOR_YELLOW = "#FFCB3B"
+      const COLOR_GREEN = "#52C41A"
+      const COLOR_BLUE = "#4D9CFF"
+
+      const staminaColor = staminaPercent > 80 ? COLOR_URGENT : COLOR_YELLOW
 
       const img = await renderImg(
         "enduid/daily_pro",
         {
-          avatar: avatarUrl || `../../../../../plugins/enduid-yunzai/resources/state/img/default_avatar.jpg`,
-          statusIcon: "11",
-          name,
-          uid,
-          level,
-          worldLevel,
-          stamina: { cur: staminaCur, total: staminaTotal, recoveryText: recovery.text },
-          bp: { cur: bpCur, total: bpTotal },
-          activation: { cur: actCur, total: actTotal },
-          visualData: [
-            {
-              title: "体力",
-              inner: `${staminaPct}%`,
-              detailed: `${staminaCur}/${staminaTotal}`,
-              percentage: circleByRate(staminaRate),
-              info: [`回满 ${recovery.text}`],
-            },
-            {
-              title: "通行证",
-              inner: `${bpPct}%`,
-              detailed: `${bpCur}/${bpTotal}`,
-              percentage: circleByRate(bpRate),
-              info: [],
-            },
-            {
-              title: "活跃",
-              inner: `${actPct}%`,
-              detailed: `${actCur}/${actTotal}`,
-              percentage: circleByRate(actRate),
-              info: [],
-            },
-          ],
-          style: { backdrop: pickStateBackdrop() },
-          time,
-          isPro: true,
-          copyright: `${GAME_TITLE} enduid-yunzai`,
+          has_bg: hasBg,
+          pile_url: pileUrl,
+          bg_url: bgUrl,
+          logo_url: logoUrl,
+          avatar_url: avatarUrl,
+          user_name: userName,
+          uid: roleId,
+          user_level: safeInt(base.level),
+          world_level: safeInt(base.worldLevel),
+          stamina_icon_url: staminaIconUrl,
+          bp_icon_url: bpIconUrl,
+          liveness_icon_url: livenessIconUrl,
+          stamina: {
+            cur: staminaCur,
+            total: staminaTotal,
+            percent: staminaPercent,
+            color: staminaColor,
+            recovery_text: recovery.text,
+            urgent: recovery.urgent,
+          },
+          battle_pass: {
+            cur: bpCur,
+            total: bpTotal,
+            percent: bpPercent,
+            color: COLOR_BLUE,
+          },
+          liveness: {
+            cur: actCur,
+            total: actTotal,
+            percent: actPercent,
+            color: COLOR_GREEN,
+          },
         },
-        { scale: 1.4 },
+        { scale: 1, quality: 90 },
       )
 
       if (img) {
