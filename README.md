@@ -1,6 +1,7 @@
 # zmd-plugin（enduid-yunzai / TRSS-Yunzai）
 
-终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件，powered by chatgpt codexcli
+终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件
+powered by chatgpt
 
 ## 功能
 
@@ -10,6 +11,10 @@
   - 支持 `@用户` 查看
   - 支持按游戏 UID 查询/更新（例如 `#zmd抽卡记录123...`）
 - 攻略（图鉴）：biligame wiki 的角色/武器列表、卡池信息、图鉴查询
+
+## 须知
+
+此插件基本就是EndUID的JS复刻版，同时缝合了一点其他项目，仅保证能够在trss-yunzai+napcat OneBotv11的环境下运行，其余环境请自测自行debug，我不提供适配
 
 ## 安装
 
