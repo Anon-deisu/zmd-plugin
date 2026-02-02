@@ -48,7 +48,6 @@ pnpm add qrcode
 - `cmd.prefix`：仅用于帮助提示，不参与命令正则匹配（默认 `#zmd`）
 - `smsdk.smSdkPath`：`sm.sdk.js` 文件路径（留空则自动探测常见位置）
 - `gacha.autoSyncAfterLogin`：登录绑定成功后是否自动同步一次抽卡记录
-- `resource.baseUrl`：抽卡记录图标资源镜像（可填仓库根或 `resource/` 目录）
 
 ## 指令速查
 
@@ -101,6 +100,5 @@ pnpm add qrcode
 - EndUID：`https://github.com/Loping151/EndUID`
 - BeyondUID：`https://github.com/baiqwerdvd/BeyondUID/tree/master`
 - biligame wiki：`https://wiki.biligame.com/zmd/`
-- Endfield 资源镜像（默认）：`https://github.com/Entropy-Increase-Team/Endfield-Resource`
 
 如你计划分发，请注意相关上游仓库的许可证要求。

@@ -51,14 +51,6 @@ const DEFAULT_CONFIG = {
     minIntervalSec: 1,
     maxIntervalSec: 3,
   },
-  resource: {
-    /** 资源镜像地址（可填仓库根目录或 resource 目录；内部会自动尝试拼接 resource/ 与 BeyondUID/resource/） */
-    baseUrl: "https://raw.githubusercontent.com/Entropy-Increase-Team/Endfield-Resource/main/resource",
-    timeoutMs: 20000,
-    concurrency: 6,
-    /** 默认下载武器最低星级（5 = 五星及以上） */
-    minWeaponRarity: 5,
-  },
   security: {
     /** 群聊不回显 cred/token */
     noShowSecretInGroup: true,
