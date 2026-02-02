@@ -1,0 +1,389 @@
+{{extend defaultLayout}}
+
+{{block 'css'}}
+<style>
+  :root {
+    --c-bg: #0f1014;
+    --c-panel: rgba(255, 255, 255, 0.06);
+    --c-panel-2: rgba(255, 255, 255, 0.04);
+    --c-border: rgba(255, 255, 255, 0.12);
+    --c-accent: #ffe600;
+    --c-text: #ffffff;
+    --c-subtext: rgba(255, 255, 255, 0.65);
+    --c-grid: rgba(255, 255, 255, 0.04);
+  }
+
+  body {
+    width: 1000px;
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: "FZB", "NZBZ", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  .container {
+    width: 1000px;
+    padding: 46px 50px 30px;
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 20%, #1a1b20 0%, #0f1014 80%);
+  }
+
+  .grid-deco {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(var(--c-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: linear-gradient(to bottom, black 30%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .header-section {
+    display: flex;
+    gap: 28px;
+    align-items: flex-start;
+    margin-bottom: 34px;
+  }
+
+  .avatar-box {
+    width: 128px;
+    height: 128px;
+    flex-shrink: 0;
+    border: 2px solid rgba(255, 255, 255, 0.22);
+    background: rgba(0, 0, 0, 0.35);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .avatar-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .avatar-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.35);
+    letter-spacing: 2px;
+    font-size: 14px;
+  }
+
+  .user-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 128px;
+    gap: 12px;
+    overflow: hidden;
+  }
+
+  .user-name {
+    font-size: 58px;
+    font-weight: 700;
+    line-height: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .uid-tag {
+    font-size: 16px;
+    font-family: "NZBZ", "FZB", monospace;
+    color: var(--c-subtext);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 4px 10px;
+    border-radius: 6px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  .awake-date {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 8px 12px;
+    border-left: 3px solid rgba(255, 255, 255, 0.25);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+  }
+
+  .awake-date .dot {
+    width: 7px;
+    height: 7px;
+    background: var(--c-accent);
+    transform: skewX(-20deg);
+  }
+
+  .mission {
+    margin-top: 6px;
+    max-width: 780px;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 16px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 120px;
+    gap: 14px;
+    margin-bottom: 34px;
+  }
+
+  .dash-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.04) 100%);
+    border: 1px solid var(--c-border);
+    padding: 18px 16px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .dash-card::before {
+    content: "";
+    position: absolute;
+    inset: -50px -80px auto auto;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 230, 0, 0.14), transparent 60%);
+    pointer-events: none;
+    filter: blur(2px);
+  }
+
+  .stat-num {
+    font-size: 52px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 1px;
+  }
+
+  .stat-label {
+    margin-top: 10px;
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.68);
+    letter-spacing: 2px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.10);
+    padding-bottom: 10px;
+    margin-bottom: 18px;
+  }
+
+  .section-title {
+    font-size: 26px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-title::before {
+    content: "";
+    width: 8px;
+    height: 26px;
+    background: var(--c-accent);
+    transform: skewX(-18deg);
+    display: block;
+  }
+
+  .section-sub {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 1px;
+  }
+
+  .char-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 14px;
+  }
+
+  .char-card {
+    position: relative;
+    height: 268px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+  }
+
+  .char-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-top: 4px solid var(--rarity-color, rgba(255, 255, 255, 0.18));
+    pointer-events: none;
+  }
+
+  .char-img {
+    width: 100%;
+    height: 78%;
+    object-fit: cover;
+    object-position: top center;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .char-meta {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 12px 12px 10px;
+    background: linear-gradient(to top, rgba(15, 16, 20, 0.96) 0%, rgba(15, 16, 20, 0.40) 90%, transparent 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .char-name {
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .char-sub {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.70);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pot-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.10);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(6px);
+  }
+</style>
+{{/block}}
+
+{{block 'main'}}
+<div class="grid-deco"></div>
+
+<div class="header-section">
+  <div class="avatar-box">
+    {{if avatarUrl}}
+    <img src="{{avatarUrl}}" />
+    {{else}}
+    <div class="avatar-placeholder">NO AVATAR</div>
+    {{/if}}
+  </div>
+  <div class="user-info">
+    <div class="user-name">
+      <span>{{name}}</span>
+      <span class="uid-tag">UID {{uid}}</span>
+    </div>
+    {{if createTime}}
+    <div class="awake-date"><span class="dot"></span>创建 {{createTime}}</div>
+    {{/if}}
+    {{if mainMission}}
+    <div class="mission">主线：{{mainMission}}</div>
+    {{/if}}
+  </div>
+</div>
+
+<div class="dashboard-grid">
+  <div class="dash-card">
+    <div class="stat-num">{{level}}</div>
+    <div class="stat-label">等级</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{worldLevel}}</div>
+    <div class="stat-label">世界等级</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{charNum}}</div>
+    <div class="stat-label">角色</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{weaponNum}}</div>
+    <div class="stat-label">武器</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{docNum}}</div>
+    <div class="stat-label">文档</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{achieveCount}}</div>
+    <div class="stat-label">成就</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{domainLevel}}</div>
+    <div class="stat-label">区域等级</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{puzzleTotal}}</div>
+    <div class="stat-label">拼图</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{trchestTotal}}</div>
+    <div class="stat-label">宝箱</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{pieceTotal}}</div>
+    <div class="stat-label">碎片</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{blackboxTotal}}</div>
+    <div class="stat-label">黑盒</div>
+  </div>
+  <div class="dash-card">
+    <div class="stat-num">{{chars.length}}</div>
+    <div class="stat-label">展示角色</div>
+  </div>
+</div>
+
+<div class="section-header">
+  <div class="section-title">角色</div>
+  <div class="section-sub">最多展示 {{chars.length}} 个（可通过刷新更新数据）</div>
+</div>
+
+<div class="char-grid">
+  {{each chars char}}
+  <div class="char-card" style="--rarity-color: {{char.rarityColor}}">
+    {{if char.avatar}}
+    <img class="char-img" src="{{char.avatar}}" />
+    {{else}}
+    <div class="char-img"></div>
+    {{/if}}
+    {{if char.potentialLevel && char.potentialLevel > 0}}
+    <div class="pot-badge">P{{char.potentialLevel}}</div>
+    {{/if}}
+    <div class="char-meta">
+      <div class="char-name">{{char.name}}</div>
+      <div class="char-sub">Lv{{char.level}} · {{char.profession}} · {{char.property}}</div>
+    </div>
+  </div>
+  {{/each}}
+</div>
+{{/block}}
+

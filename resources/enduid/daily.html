@@ -1,0 +1,70 @@
+{{extend defaultLayout}}
+
+{{block 'css'}}
+<link rel="stylesheet" href="{{_res_path}}enduid/css/daily.css" />
+{{/block}}
+
+{{block 'main'}}
+<div class="header">
+  <div class="title">终末地 · 每日</div>
+  <div class="time">{{time}}</div>
+</div>
+
+<div class="card">
+  <div class="grid">
+    <div class="kv">
+      <div class="k">昵称</div>
+      <div class="v">{{name}}</div>
+    </div>
+    <div class="kv">
+      <div class="k">UID</div>
+      <div class="v">{{uid}}</div>
+    </div>
+    <div class="kv">
+      <div class="k">等级</div>
+      <div class="v">{{level}}</div>
+    </div>
+    <div class="kv">
+      <div class="k">世界等级</div>
+      <div class="v">{{worldLevel}}</div>
+    </div>
+  </div>
+
+  <div class="sections">
+    <div class="section">
+      <div class="section-title">
+        <div class="name">体力</div>
+        <div class="meta">{{stamina.cur}} / {{stamina.total}}</div>
+      </div>
+      <div class="bar">
+        <div class="fill" style="width: {{stamina.percent}}%; background: {{stamina.color}};"></div>
+      </div>
+      <div class="submeta">
+        <div>回满：{{stamina.recoveryText}}</div>
+        <div class="{{if stamina.recoveryUrgent}}urgent{{/if}}">{{stamina.recoveryHint}}</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <div class="name">通行证</div>
+        <div class="meta">{{bp.cur}} / {{bp.total}}</div>
+      </div>
+      <div class="bar">
+        <div class="fill" style="width: {{bp.percent}}%; background: {{bp.color}};"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">
+        <div class="name">活跃</div>
+        <div class="meta">{{activation.cur}} / {{activation.total}}</div>
+      </div>
+      <div class="bar">
+        <div class="fill" style="width: {{activation.percent}}%; background: {{activation.color}};"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{{/block}}
+

@@ -1,0 +1,86 @@
+# zmd-plugin（enduid-yunzai / TRSS-Yunzai）
+
+终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件。
+
+## 功能
+
+- 账号：私聊扫码登录 / 手动绑定 cred 或 token
+- 查询：每日、卡片、面板、基建、公告
+- 抽卡记录：更新/查看/导入/导出/删除
+  - 支持 `@用户` 查看
+  - 支持按游戏 UID 查询/更新（例如 `#zmd抽卡记录123...`）
+- 攻略（图鉴）：biligame wiki 的角色/武器列表、卡池信息、图鉴查询
+- 抽卡资源：下载抽卡记录图标资源（可配置镜像）
+
+## 安装
+
+1) 将本仓库放到 TRSS-Yunzai 的 `plugins/` 下并命名为 `enduid-yunzai`
+2) 在 TRSS-Yunzai 根目录安装依赖（如已安装可忽略）：
+
+```bash
+pnpm add qrcode
+```
+
+3) 重启机器人
+
+## 配置
+
+首次加载会自动生成：`config/enduid-yunzai.yaml`
+
+常用配置：
+
+- `cmd.prefix`：仅用于帮助提示，不参与命令正则匹配（默认 `#zmd`）
+- `smsdk.smSdkPath`：`sm.sdk.js` 文件路径（留空则自动探测常见位置）
+- `gacha.autoSyncAfterLogin`：登录绑定成功后是否自动同步一次抽卡记录
+- `resource.baseUrl`：抽卡记录图标资源镜像（可填仓库根或 `resource/` 目录）
+
+## 指令速查
+
+默认别名：`#zmd` / `#终末地`
+
+### 账号
+
+- `#zmd登录`
+- `#zmd绑定 <cred|token>`（支持 `cred=...` / `token=...`）
+- `#zmd查看` / `#zmd切换 <序号|UID>` / `#zmd删除 <序号|UID>`
+
+### 抽卡记录
+
+- 更新：
+  - `#zmd更新抽卡记录`
+  - `#zmd更新抽卡记录<UID>`（仅允许更新自己已绑定的 UID）
+  - `#zmd更新抽卡记录 @用户`（仅 master）
+- 查看：
+  - `#zmd抽卡记录`
+  - `#zmd抽卡记录<UID>`（仅允许查询自己已绑定的 UID；master 可查询任意已缓存 UID）
+  - `#zmd抽卡记录 @用户`
+- 导入/导出/删除：
+  - `#zmd导入抽卡记录 <u8_token/链接>` 或直接发送 JSON 文件
+  - `#zmd导出抽卡记录`
+  - `#zmd删除抽卡记录`
+
+### 攻略（图鉴 / biligame wiki）
+
+- `#zmd角色列表` / `#zmd武器列表`
+- `#zmd卡池`（别名：`#zmd卡池信息` / `#zmdup角色`）
+- `#zmd<名称>图鉴`（后缀可用：介绍/技能/天赋/潜能/专武/武器）
+
+### 资源
+
+- `#zmd资源状态`
+- `#zmd资源设置 <资源镜像URL>`
+- `#zmd资源下载` / `#zmd资源更新` / `#zmd资源强制更新`
+
+## 仓库
+
+- 主仓库：`https://github.com/Anon-deisu/zmd-plugin`
+
+## 参考
+
+- EndUID（接口行为参考 / 部分脚本来源）
+- BeyondUID（抽卡记录流程参考）
+- biligame wiki：`https://wiki.biligame.com/zmd/`
+- Endfield 资源镜像（默认）：`https://github.com/Entropy-Increase-Team/Endfield-Resource`
+
+如你计划分发，请注意相关上游仓库的许可证要求。
+

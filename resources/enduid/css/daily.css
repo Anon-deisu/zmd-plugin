@@ -1,0 +1,117 @@
+.container {
+  background: radial-gradient(1200px 600px at 0% 0%, #e0f2fe 0%, rgba(224, 242, 254, 0) 55%),
+    radial-gradient(900px 480px at 100% 0%, #ede9fe 0%, rgba(237, 233, 254, 0) 55%),
+    linear-gradient(180deg, #0b1220 0%, #0b1220 100%);
+  border-radius: 18px;
+  overflow: hidden;
+  color: #e5e7eb;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.header .title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.header .time {
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 14px 14px 10px 14px;
+  backdrop-filter: blur(8px);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+
+.kv .k {
+  font-size: 13px;
+  opacity: 0.75;
+  margin-bottom: 2px;
+}
+
+.kv .v {
+  font-size: 16px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.sections {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.section {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  padding: 12px 12px 10px 12px;
+}
+
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.section-title .name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.section-title .meta {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.bar {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.bar .fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.submeta {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  opacity: 0.86;
+}
+
+.submeta .urgent {
+  color: #fca5a5;
+  opacity: 1;
+  font-weight: 700;
+}
+
+.copyright {
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  opacity: 1;
+}
+

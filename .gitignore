@@ -1,0 +1,13 @@
+# Runtime / user data (DO NOT COMMIT)
+data/
+
+# Local temp/cache
+temp/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+

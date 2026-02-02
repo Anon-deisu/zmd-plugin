@@ -1,0 +1,66 @@
+{{extend defaultLayout}}
+
+{{block 'css'}}
+<link rel="stylesheet" href="{{_res_path}}help/css/index.css" />
+<style>
+  .container {
+    background-image: url("{{_res_path}}help/texture2d/bg.png");
+  }
+</style>
+{{/block}}
+
+{{block 'main'}}
+<div class="help-root">
+  <div class="banner" style="background-image: url('{{_res_path}}help/texture2d/banner_bg.png');">
+    <div class="plugin-icon">
+      {{if avatar}}
+      <img src="{{avatar}}" />
+      {{else}}
+      <img src="{{_res_path}}help/ICON.png" />
+      {{/if}}
+    </div>
+    <div class="banner-main">
+      <div class="banner-title">{{title}}</div>
+      <div class="banner-subtitle">{{subtitle}}</div>
+    </div>
+    <div class="banner-meta">
+      <div class="prefix">前缀 {{prefix}}</div>
+      <div class="time">{{time}}</div>
+    </div>
+  </div>
+
+  <div class="sections">
+    {{each sections s}}
+    <div class="section">
+      <div class="section-header" style="background-image: url('{{_res_path}}help/texture2d/cag_bg.png');">
+        <img class="section-icon" src="{{_res_path}}help/icon_path/通用.png" />
+        <div class="section-headline">
+          <div class="section-title">{{s.title}}</div>
+          {{if s.desc}}
+          <div class="section-desc">{{s.desc}}</div>
+          {{/if}}
+        </div>
+      </div>
+      <div class="section-body">
+        {{each s.items it}}
+        <div class="item">
+          <div class="item-left">
+            <div class="item-name">{{it.name}}</div>
+            <div class="item-cmd">{{it.cmd}}</div>
+          </div>
+          <div class="item-right">
+            {{if it.badge}}
+            <div class="item-badge">{{it.badge}}</div>
+            {{/if}}
+            {{if it.desc}}
+            <div class="item-desc">{{it.desc}}</div>
+            {{/if}}
+          </div>
+        </div>
+        {{/each}}
+      </div>
+    </div>
+    {{/each}}
+  </div>
+</div>
+{{/block}}

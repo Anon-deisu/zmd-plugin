@@ -1,0 +1,414 @@
+{{extend defaultLayout}}
+
+{{block 'css'}}
+<style>
+  :root {
+    --c-bg: #0f1014;
+    --c-panel: rgba(255, 255, 255, 0.05);
+    --c-border: rgba(255, 255, 255, 0.12);
+    --c-accent: #ffe600;
+    --c-text: #ffffff;
+    --c-subtext: rgba(255, 255, 255, 0.70);
+    --c-grid: rgba(255, 255, 255, 0.04);
+  }
+
+  body {
+    width: 1000px;
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: "FZB", "NZBZ", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  .container {
+    width: 1000px;
+    padding: 42px 44px 28px;
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 20%, #1a1b20 0%, #0f1014 80%);
+  }
+
+  .grid-deco {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(var(--c-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: linear-gradient(to bottom, black 25%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--c-border);
+    margin-bottom: 22px;
+  }
+
+  .avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    flex-shrink: 0;
+  }
+
+  .avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .user-details {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .user-name {
+    font-size: 44px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .user-uid {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.65);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 4px 10px;
+    border-radius: 6px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  .info-tags {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    padding: 6px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.75);
+  }
+
+  .tag strong {
+    color: var(--c-accent);
+    font-size: 16px;
+  }
+
+  .section {
+    margin-top: 18px;
+  }
+
+  .section-title {
+    font-size: 20px;
+    font-weight: 900;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-left: 4px solid var(--c-accent);
+    padding-left: 12px;
+  }
+
+  .section-title span {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.55);
+    letter-spacing: 2px;
+    font-weight: 700;
+  }
+
+  .room-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .room-card {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 140px;
+  }
+
+  .room-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.14);
+  }
+
+  .room-type {
+    font-size: 14px;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .room-lvl {
+    font-size: 14px;
+    color: var(--c-accent);
+    font-weight: 900;
+  }
+
+  .char-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .char-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 999px;
+    max-width: 100%;
+  }
+
+  .char-chip img {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    flex-shrink: 0;
+  }
+
+  .char-chip span {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.86);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 92px;
+  }
+
+  .domain-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+
+  .domain-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .domain-header {
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    gap: 10px;
+  }
+
+  .domain-name {
+    font-size: 15px;
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .domain-lvl {
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--c-accent);
+    white-space: nowrap;
+  }
+
+  .domain-body {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .domain-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .stat {
+    background: rgba(0, 0, 0, 0.30);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .stat b {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  .settlement-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .settlement-item {
+    background: rgba(0, 0, 0, 0.22);
+    border-left: 2px solid rgba(255, 255, 255, 0.18);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .st-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .st-name {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.88);
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .st-sub {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.65);
+    white-space: nowrap;
+  }
+</style>
+{{/block}}
+
+{{block 'main'}}
+<div class="grid-deco"></div>
+
+<div class="header">
+  <div class="avatar">
+    {{if userAvatarUrl}}
+    <img src="{{userAvatarUrl}}" />
+    {{/if}}
+  </div>
+  <div class="user-details">
+    <div class="name-row">
+      <div class="user-name">{{userName}}</div>
+      <div class="user-uid">UID {{userUid}}</div>
+    </div>
+    <div class="info-tags">
+      <div class="tag">等级 <strong>{{level}}</strong></div>
+      <div class="tag">世界 <strong>{{worldLevel}}</strong></div>
+      <div class="tag">角色 <strong>{{charNum}}</strong></div>
+      <div class="tag">武器 <strong>{{weaponNum}}</strong></div>
+      <div class="tag">文档 <strong>{{docNum}}</strong></div>
+      {{if time}}<div class="tag">更新时间 <strong>{{time}}</strong></div>{{/if}}
+    </div>
+  </div>
+</div>
+
+{{if rooms && rooms.length}}
+<div class="section">
+  <div class="section-title">飞船 <span>SPACESHIP</span></div>
+  <div class="room-grid">
+    {{each rooms room}}
+    <div class="room-card">
+      <div class="room-header">
+        <div class="room-type">TYPE {{room.type}}</div>
+        <div class="room-lvl">Lv{{room.level}}</div>
+      </div>
+      <div class="char-row">
+        {{each room.chars c}}
+        <div class="char-chip">
+          {{if c.avatar}}<img src="{{c.avatar}}" />{{/if}}
+          <span>{{c.name}}</span>
+        </div>
+        {{/each}}
+      </div>
+    </div>
+    {{/each}}
+  </div>
+</div>
+{{/if}}
+
+{{if domains && domains.length}}
+<div class="section">
+  <div class="section-title">地区建设 <span>DOMAIN</span></div>
+  <div class="domain-grid">
+    {{each domains d}}
+    <div class="domain-card">
+      <div class="domain-header">
+        <div class="domain-name">{{d.name}}</div>
+        <div class="domain-lvl">Lv{{d.level}}</div>
+      </div>
+      <div class="domain-body">
+        <div class="domain-stats">
+          <div class="stat"><span>拼图</span><b>{{d.totalPuzzle}}</b></div>
+          <div class="stat"><span>宝箱</span><b>{{d.totalTrchest}}</b></div>
+          <div class="stat"><span>碎片</span><b>{{d.totalPiece}}</b></div>
+          <div class="stat"><span>黑盒</span><b>{{d.totalBlackbox}}</b></div>
+        </div>
+        <div class="settlement-list">
+          {{each d.settlements s}}
+          <div class="settlement-item">
+            <div class="st-top">
+              <div class="st-name">{{s.name}}</div>
+              <div class="st-sub">Lv{{s.level}} · 余额 {{s.remainMoney}}</div>
+            </div>
+            <div class="char-row">
+              {{each s.officers o}}
+              <div class="char-chip">
+                {{if o.avatar}}<img src="{{o.avatar}}" />{{/if}}
+                <span>{{o.name}}</span>
+              </div>
+              {{/each}}
+            </div>
+          </div>
+          {{/each}}
+        </div>
+      </div>
+    </div>
+    {{/each}}
+  </div>
+</div>
+{{/if}}
+{{/block}}
+

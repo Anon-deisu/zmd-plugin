@@ -1,0 +1,373 @@
+{{extend miaoLayout}}
+
+{{block 'css'}}
+<link rel="stylesheet" type="text/css" href="{{_res_path}}miao/common/tpl.css?v=1.0"/>
+<link rel="stylesheet" type="text/css" href="{{_res_path}}miao/character/avatar-list.css"/>
+<style>
+  .avatar-cont {
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  /* 修复 user-banner 右侧末尾“露边/方角”问题：裁剪内部元素溢出 + banner 全覆盖 */
+  .enduid-gachalog .user-banner {
+    overflow: hidden;
+    /* 不使用星空背景，保持顶部横条为偏黄色的纯色 */
+    background-image: none !important;
+    background-color: #f0ece4;
+  }
+
+  /* 顶部统计横条：去掉尾部特殊宽度/填充，并统一背景色调 */
+  .enduid-gachalog .user-banner .stat {
+    background: #f0ece4;
+    border: 1px solid rgba(65, 78, 100, 0.12);
+  }
+
+  .enduid-gachalog .user-banner .stat-li {
+    width: auto;
+    min-width: 72px;
+    background: transparent;
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+
+  .enduid-gachalog .user-banner .stat-li:nth-child(odd),
+  .enduid-gachalog .user-banner .stat-li:nth-child(even) {
+    background: transparent;
+  }
+
+  .enduid-gachalog .user-banner .stat-li:first-child,
+  .enduid-gachalog .user-banner .stat-li:last-child {
+    width: auto;
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+
+  .enduid-gachalog .user-banner .stat-li + .stat-li {
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .enduid-gachalog .gacha-list {
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .enduid-gachalog .pool-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .enduid-gachalog .pool-name {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .enduid-gachalog .pool-name .name {
+    font-size: 20px;
+    font-weight: 700;
+    color: #d3bc8e;
+    line-height: 22px;
+  }
+
+  .enduid-gachalog .pool-name .time {
+    font-size: 12px;
+    color: #aaa;
+    line-height: 14px;
+  }
+
+  .enduid-gachalog .pool-stat {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .enduid-gachalog .pool-stat .info {
+    min-width: 56px;
+    text-align: center;
+    padding: 0 4px;
+  }
+
+  .enduid-gachalog .pool-stat .num {
+    color: #ffde9d;
+    height: 22px;
+    line-height: 22px;
+    font-size: 20px;
+    text-shadow: 0 0 2px #000;
+  }
+
+  .enduid-gachalog .pool-stat .title {
+    font-size: 12px;
+    line-height: 14px;
+    height: 14px;
+    color: #aaa;
+  }
+
+  .enduid-gachalog .gacha-item {
+    height: 38px;
+    display: flex;
+    background: rgba(0, 0, 0, 0.4);
+  }
+
+  .enduid-gachalog .gacha-item + .gacha-item {
+    margin-top: 6px;
+  }
+
+  .enduid-gachalog .gacha-item .date {
+    width: 97px;
+    line-height: 38px;
+    padding-left: 6px;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .enduid-gachalog .gacha-item .date .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.6);
+  }
+
+  .enduid-gachalog .gacha-item.wai .date .dot {
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+
+  .enduid-gachalog .gacha-item .date .txt {
+    text-align: center;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  .enduid-gachalog .gacha-item .name {
+    width: 110px;
+    text-align: right;
+    line-height: 38px;
+    padding-right: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .enduid-gachalog .gacha-item.wai .name {
+    color: #aaa;
+  }
+
+  .enduid-gachalog .gacha-item.up .name {
+    color: #ffd484;
+  }
+
+  .enduid-gachalog .gacha-item.pending .date .dot {
+    border-color: rgba(255, 255, 255, 0.35);
+  }
+
+  .enduid-gachalog .gacha-item.pending .name {
+    color: #aaa;
+  }
+
+  .enduid-gachalog .gacha-item.pending .icon .icon-bg .star-text {
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  }
+
+  .enduid-gachalog .icon {
+    width: 32px;
+    height: 38px;
+  }
+
+  .enduid-gachalog .icon .icon-bg {
+    width: 32px;
+    height: 32px;
+    margin: 3px 0;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: url("{{_res_path}}miao/common/item/bg5.png") 100% 100% no-repeat;
+    background-size: cover;
+  }
+
+  .enduid-gachalog .icon .icon-bg .star-text {
+    font-size: 18px;
+    font-weight: 900;
+    color: #6f4b00;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+  }
+
+  .enduid-gachalog .icon .icon-bg .item-icon {
+    display: block;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  }
+
+  .enduid-gachalog .process {
+    width: 470px;
+    padding-right: 15px;
+  }
+
+  .enduid-gachalog .process .bar {
+    border-radius: 0 5px 5px 0;
+    height: 26px;
+    line-height: 26px;
+    margin: 6px 0;
+    padding-left: 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .enduid-gachalog .process .bar.gold {
+    background: #ffeb73;
+    color: #6f4b00;
+    min-width: 18px;
+  }
+
+  .enduid-gachalog .process .bar.good {
+    background: #168b2c;
+    min-width: 13%;
+    color: #fff;
+  }
+
+  .enduid-gachalog .process .bar.normal {
+    background: #6939b7;
+    color: #fff;
+  }
+
+  .enduid-gachalog .process .bar.bad {
+    background: #9d3333;
+    color: #fff;
+  }
+
+  .enduid-gachalog .gacha-empty {
+    padding: 12px 10px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.4);
+    color: rgba(255, 255, 255, 0.75);
+    text-align: center;
+    font-size: 13px;
+  }
+</style>
+{{/block}}
+
+{{ set statMap = { totalNum:'抽卡总数', sixNum:'6星', charNum:'角色记录', weaponNum:'武器记录' } }}
+
+{{block 'main'}}
+<div class="basic enduid-gachalog">
+  <div class="user-banner" style="background-image:url({{_res_path}}{{face?.banner}})">
+    <div class="face">
+      {{if face?.qFace || face?.face}}
+      <span style="background-image:url({{face?.qFace||face?.face}})"></span>
+      {{else}}
+      <span style="background-image:url({{_res_path}}miao/common/face/what.jpg)"></span>
+      {{/if}}
+    </div>
+    <div class="user-info">
+      <div class="name">
+        <strong>{{face?.name || '未命名'}}</strong>
+      </div>
+      <div class="uid">
+        {{if uid}}<span> #{{uid}}</span>{{/if}}
+        <span> · {{exportTime}}</span>
+      </div>
+    </div>
+    {{if gacha && gacha.stat }}
+    {{set stat = gacha.stat }}
+    <div class="stat">
+      {{each statMap title key}}
+      {{if stat[key] !== undefined && stat[key] !== null }}
+      <div class="stat-li">
+        <strong>{{stat[key]}}</strong>
+        <span>{{title}}</span>
+      </div>
+      {{/if}}
+      {{/each}}
+    </div>
+    {{/if}}
+  </div>
+
+  <div class="ck-notice">
+    <strong>{{prefix}}更新抽卡记录</strong> 更新抽卡记录，<strong>{{prefix}}抽卡记录</strong> 查看抽卡记录
+  </div>
+
+  {{each gacha.pools pool}}
+  <div class="cont avatar-cont">
+    <div class="cont-title border-less">
+      <div class="pool-title">
+        <div class="pool-name">
+          <div class="name">{{pool.title}}</div>
+          <div class="time">{{pool.timeRange}}</div>
+        </div>
+        <div class="pool-stat">
+          <div class="info">
+            <div class="num">{{pool.stats.total}}</div>
+            <div class="title">抽卡</div>
+          </div>
+          <div class="info">
+            <div class="num">{{pool.stats.six}}</div>
+            <div class="title">6星</div>
+          </div>
+          <div class="info">
+            <div class="num">{{pool.pity}}</div>
+            <div class="title">垫抽</div>
+          </div>
+          <div class="info">
+            <div class="num">{{pool.stats.avgText}}</div>
+            <div class="title">平均</div>
+          </div>
+          {{if pool.stats.free !== null}}
+          <div class="info">
+            <div class="num">{{pool.stats.free}}</div>
+            <div class="title">免费</div>
+          </div>
+          {{/if}}
+        </div>
+      </div>
+    </div>
+
+    <div class="gacha-list">
+      {{if pool.logs && pool.logs.length}}
+      {{each pool.logs ds idx}}
+      {{set max = pool.max || 90}}
+      {{set count = ds.count || 0}}
+      {{set pct = count > max ? 100 : (count / max * 100) }}
+      <div class="gacha-item {{ds.cls || (ds.isFree ? 'wai' : 'up')}}">
+        <div class="date">
+          <div class="dot"></div>
+          <div class="txt">{{ds.date}}</div>
+        </div>
+        <div class="name">{{ds.abbr}}</div>
+        <div class="icon">
+          <div class="icon-bg star6">
+            {{if ds.iconPath}}
+            <span class="item-icon" style="background-image:url('{{_res_path}}{{ds.iconPath}}')"></span>
+            {{else if ds.icon}}
+            <span class="item-icon" style="background-image:url('{{ds.icon}}')"></span>
+            {{else}}
+            <span class="star-text">{{ds.mark || '6'}}</span>
+            {{/if}}
+          </div>
+        </div>
+        <div class="process">
+          <div class="bar  {{count<=10?'gold': (count<max*0.5 ? 'good' : (count<max*0.83) ? 'normal': 'bad')}}"
+               style="width:{{pct}}%">
+            {{count}}抽{{if ds.isFree}} (免费){{/if}}
+          </div>
+        </div>
+      </div>
+      {{/each}}
+      {{else}}
+      <div class="gacha-empty">暂无 6 星记录</div>
+      {{/if}}
+    </div>
+  </div>
+  {{/each}}
+</div>
+{{/block}}

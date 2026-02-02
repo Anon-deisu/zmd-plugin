@@ -1,0 +1,89 @@
+{{extend defaultLayout}}
+
+{{block 'css'}}
+<link rel="stylesheet" href="{{_res_path}}state/css/index.css" />
+<style>
+  .container {
+    background-image: url({{style.backdrop}});
+  }
+</style>
+{{/block}}
+
+{{block 'main'}}
+<div class="box">
+  <div class="botInfo">
+    <div class="avatar-box">
+      <div class="avatar">
+        <img src="{{avatar}}">
+      </div>
+      {{if statusIcon}}
+      <div class="onlineStatus">
+        <img src="{{_res_path}}state/icon/{{statusIcon}}.png">
+      </div>
+      {{/if}}
+    </div>
+    <div class="header">
+      <h1>
+        <div class="name">{{name}}</div>
+        <div class="platform">Endfield</div>
+      </h1>
+      <hr noshade>
+      <p>
+        <span>
+          <img src="{{_res_path}}state/icon/机器人.png">
+          UID {{uid}}
+        </span>
+        <span>
+          <img src="{{_res_path}}state/icon/服务器.png">
+          Lv. {{level}} / WL {{worldLevel}}
+        </span>
+      </p>
+      <p>
+        <span>
+          <img src="{{_res_path}}state/icon/内存.png">
+          体力 {{stamina.cur}}/{{stamina.total}}
+        </span>
+        <span>
+          <img src="{{_res_path}}state/icon/时间.png">
+          回满 {{stamina.recoveryText}}
+        </span>
+        <span>
+          <img src="{{_res_path}}state/icon/统计图.png">
+          通行证 {{bp.cur}}/{{bp.total}}
+        </span>
+        <span>
+          <img src="{{_res_path}}state/icon/sent.png">
+          活跃 {{activation.cur}}/{{activation.total}}
+        </span>
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="box" data-boxInfo="主硬件">
+  <div class="time">{{time}} {{isPro ? '状态Pro' : ''}}</div>
+  <ul class="mainHardware">
+    {{each visualData group i}}
+    <li class="li">
+      <div class="container-box" data-num="{{group.inner}}" id="box">
+        <div class="circle-outer"></div>
+        <svg>
+          <circle id="circle" stroke="{{group.percentage.color}}" style="stroke-dashoffset:{{group.percentage.per}}">
+          </circle>
+        </svg>
+      </div>
+      <article>
+        <summary>{{group.title}}</summary>
+        {{if group.detailed}}
+        <div class="detailed">{{group.detailed}}</div>
+        {{/if}}
+        {{each group.info info}}
+        <p>{{info}}</p>
+        {{/each}}
+      </article>
+    </li>
+    {{/each}}
+  </ul>
+</div>
+{{/block}}
+

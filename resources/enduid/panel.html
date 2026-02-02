@@ -1,0 +1,220 @@
+{{extend miaoLayout}}
+
+{{set placeholder = "———"}}
+{{set charIconBase = _res_path + "enduid/texture2d/"}}
+
+{{block 'css'}}
+<link rel="stylesheet" type="text/css" href="{{_res_path}}miao/character/profile-detail.css"/>
+<style>
+  .enduid-panel .main-pic {
+    background-position: center calc(50% + 18px);
+  }
+
+  .enduid-panel .char-lv {
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+
+  .enduid-panel .detail {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .enduid-panel .char-attr {
+    margin-left: auto;
+  }
+
+  .enduid-panel .enduid-skills {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    width: 300px;
+  }
+
+  .enduid-panel .enduid-skills .talent-item {
+    flex: 0 0 25%;
+  }
+
+  .enduid-panel .enduid-skills .talent-icon {
+    width: 60px;
+    height: 60px;
+    margin: 0 -5px;
+  }
+
+  .enduid-panel .enduid-skills .talent-icon img,
+  .enduid-panel .enduid-skills .talent-icon .talent-icon-img {
+    width: 52%;
+    height: 52%;
+    margin: -26% 0 0 -26%;
+  }
+
+  .enduid-panel .enduid-skills .talent-icon strong {
+    width: 22px;
+    height: 18px;
+    line-height: 18px;
+    font-size: 12px;
+    margin-left: -11px;
+    border-radius: 4px;
+  }
+
+  .enduid-panel .enduid-tags {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    width: 300px;
+    margin-top: 8px;
+  }
+
+  .enduid-panel .enduid-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    line-height: 18px;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.5);
+    color: #d3bc8e;
+    text-shadow: 0 0 1px rgba(0, 0, 0, 0.85);
+  }
+
+  .enduid-panel .enduid-tag-icon {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+    flex: 0 0 auto;
+    filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85));
+  }
+
+  .enduid-panel .enduid-tag-text {
+    line-height: 18px;
+  }
+
+  .artis .item.enduid-equip ul.detail li,
+  .artis .item.enduid-equip ul.detail li span {
+    font-size: 12px;
+  }
+
+  .artis .item.enduid-equip ul.detail li span.title {
+    padding-left: 12px;
+  }
+
+  .artis .item.enduid-equip ul.detail li span.val {
+    padding-right: 8px;
+  }
+</style>
+{{/block}}
+
+{{block 'main'}}
+<div class="profile-cont game-gs enduid-panel">
+  <div class="basic">
+    <div class="main-pic" style="background-image:url({{charUrl}})"></div>
+    <div class="detail">
+      <div class="char-name">{{charName}}</div>
+      <div class="char-lv">
+        {{userName}} · UID {{userUid}} - Lv.{{level}}
+        <span class="cons cons-{{potential}}">潜能{{potential}}</span>
+        <span class="cons cons-n0">突破{{evolvePhase}}</span>
+      </div>
+
+      <div class="char-talents enduid-skills">
+        {{each skills skill}}
+        <div class="talent-item">
+          <div class="talent-icon">
+            <div class="talent-icon-img" style="background-image:url({{skill.icon}})"></div>
+            <strong>{{skill.level}}</strong>
+          </div>
+        </div>
+        {{/each}}
+      </div>
+
+      <ul class="char-attr">
+        {{each stats s}}
+        <li>
+          <div class="icon"><i class="i-{{s.key}}"></i></div>
+          <div class="title">{{s.title}}</div>
+          <div class="weight"></div>
+          <div class="value">{{s.value || placeholder}}</div>
+          <div class="value2">
+            <span class="base">{{s.base || placeholder}}</span>
+            <span class="plus">{{if s.plus && s.plus !== placeholder}}+{{s.plus}}{{else}}{{s.plus || placeholder}}{{/if}}</span>
+          </div>
+        </li>
+        {{/each}}
+      </ul>
+
+      <div class="enduid-tags">
+        <span class="enduid-tag">
+          <img class="enduid-tag-icon" src="{{charIconBase + profession + '.png'}}" onerror="this.remove()"/>
+          <span class="enduid-tag-text">{{profession}}</span>
+        </span>
+        <span class="enduid-tag">
+          <img class="enduid-tag-icon" src="{{charIconBase + property + '.png'}}" onerror="this.remove()"/>
+          <span class="enduid-tag-text">{{property}}</span>
+        </span>
+        <span class="enduid-tag">
+          <img class="enduid-tag-icon" src="{{charIconBase + weaponType + '.png'}}" onerror="this.remove()"/>
+          <span class="enduid-tag-text">{{weaponType}}</span>
+        </span>
+        {{each charTags tag}}
+        <span class="enduid-tag">{{tag}}</span>
+        {{/each}}
+      </div>
+    </div>
+
+    <div class="data-info">
+      <span>{{subtitle}}</span>
+      {{if time}}<span class="time">{{time}}</span>{{/if}}
+    </div>
+  </div>
+
+  <div class="artis">
+    <div class="item weapon enduid-weapon">
+      {{if weapon && weapon.icon}}
+      <div class="img" style="background-image:url({{weapon.icon}})"></div>
+      {{else}}
+      <div class="img"></div>
+      {{/if}}
+      <div class="head">
+        <strong>{{if weapon && weapon.name}}{{weapon.name}}{{else}}{{placeholder}}{{/if}}</strong>
+        <span class="info">
+          {{if weapon && (weapon.level === 0 || weapon.level)}}Lv.{{weapon.level}}{{else}}Lv.{{placeholder}}{{/if}}
+          {{if weapon && (weapon.refine === 0 || weapon.refine)}} · 精{{weapon.refine}}{{/if}}
+          {{if weapon && (weapon.breakthrough === 0 || weapon.breakthrough)}} · 突破{{weapon.breakthrough}}{{/if}}
+        </span>
+        <div class="weapon-attr">
+          <div><span>精炼</span> {{if weapon && (weapon.refine === 0 || weapon.refine)}}{{weapon.refine}}{{else}}{{placeholder}}{{/if}}</div>
+          <div><span>突破</span> {{if weapon && (weapon.breakthrough === 0 || weapon.breakthrough)}}{{weapon.breakthrough}}{{else}}{{placeholder}}{{/if}}</div>
+        </div>
+      </div>
+      <div class="weapon-desc-cont">
+        <div class="weapon-desc">{{if weapon && weapon.desc}}{{weapon.desc}}{{else}}{{placeholder}}{{/if}}</div>
+      </div>
+    </div>
+
+    {{each equipItems equip}}
+    <div class="item arti enduid-equip">
+      <div class="arti-icon">
+        {{if equip.icon}}
+        <div class="img" style="background-image:url({{equip.icon}})"></div>
+        {{else}}
+        <div class="img"></div>
+        {{/if}}
+        <span>{{if equip.level}}+{{equip.level}}{{else}}{{placeholder}}{{/if}}</span>
+      </div>
+      <div class="head">
+        <strong>{{equip.name || placeholder}}</strong>
+        <span>{{equip.slotName || placeholder}}</span>
+      </div>
+      <ul class="detail attr">
+        <li class="arti-main"><span class="title">属性</span><span class="val">{{equip.detail.main || placeholder}}</span></li>
+        {{each equip.detail.subs sub idx}}
+        <li><span class="title">词条{{idx + 1}}</span><span class="val">{{sub || placeholder}}</span></li>
+        {{/each}}
+      </ul>
+    </div>
+    {{/each}}
+  </div>
+</div>
+{{/block}}

@@ -1,0 +1,13 @@
+import { upsertAccount } from "./store.js"
+import { getUserInfo } from "./skland/client.js"
+
+export async function ensureSklandUserId(cred, account, userId) {
+  if (account?.sklandUserId) return String(account.sklandUserId)
+  const info = await getUserInfo(cred)
+  const id = info?.data?.user?.id
+  if (!id) return ""
+  account.sklandUserId = String(id)
+  await upsertAccount(userId, account)
+  return String(account.sklandUserId)
+}
+
