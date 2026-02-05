@@ -1,19 +1,36 @@
 # zmd-plugin（TRSS-Yunzai）
 
-终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件
+终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件。
+
+- 命令别名：`#zmd` / `#终末地`
+- 配置文件：`config/zmd-plugin.yaml`（首次加载自动生成；支持从旧的 `config/enduid-yunzai.yaml` 合并迁移）
 
 ## 功能
 
-- 账号：私聊扫码登录 / 手动绑定 cred 或 token
-- 查询：每日、卡片、面板、基建、公告
+- 账号：私聊扫码登录 / 手动绑定 `cred` 或 `token`
+- 查询：每日、卡片、面板、基建/飞船、公告
 - 抽卡记录：更新/查看/导入/导出/删除
   - 支持 `@用户` 查看
   - 支持按游戏 UID 查询/更新（例如 `#zmd抽卡记录123...`）
-- 攻略（图鉴）：biligame wiki 的角色/武器列表、卡池信息、图鉴查询
+- 图鉴/列表：biligame wiki 的角色/武器列表、卡池信息、图鉴查询
+- 攻略：从资源库下载/更新与查询，支持用户上传图片
+- 其他：状态统计、更新日志
 
-## 须知
+## 兼容性（须知）
 
-此插件基本就是EndUID的JS复刻版，同时缝合了一点其他项目，仅保证能够在trss-yunzai+napcat OneBotv11的环境下运行，其余环境请自测自行debug，我不提供适配
+此插件主要在 `TRSS-Yunzai + NapCat OneBotv11` 环境下自用验证，其余适配器/协议请自行测试与排查。
+
+## 快速开始
+
+1) 安装插件并安装依赖（见下方）
+2) 重启机器人
+3) 私聊登录：`#zmd登录`
+4) 刷新数据：`#zmd刷新`
+5) 常用查询：
+   - `#zmd每日`
+   - `#zmd卡片`
+   - `#<角色>面板`（例如 `#霜星面板`）
+6) 抽卡记录：`#zmd更新抽卡记录` -> `#zmd抽卡记录`
 
 ## 安装
 
@@ -34,11 +51,11 @@ git pull
 
 ### 方式二：手动安装
 
-1) 下载/解压本仓库到 TRSS-Yunzai 的 `plugins/` 下并命名为 `zmd-plugin`
+1) 下载/解压本仓库到 TRSS-Yunzai 的 `plugins/` 下（建议目录名为 `zmd-plugin`）
 2) 在 TRSS-Yunzai 根目录安装依赖（如已安装可忽略）：
 
 ```bash
-pnpm add qrcode
+pnpm add qrcode node-fetch
 ```
 
 3) 重启机器人
@@ -47,11 +64,18 @@ pnpm add qrcode
 
 首次加载会自动生成：`config/zmd-plugin.yaml`
 
-常用配置：
+常用配置项：
 
 - `cmd.prefix`：仅用于帮助提示，不参与命令正则匹配（默认 `#zmd`）
-- `smsdk.smSdkPath`：`sm.sdk.js` 文件路径（留空则自动探测常见位置）
+- `gacha.toolUrl`：抽卡工具下载链接（`#zmd抽卡工具` 会回复该链接）
 - `gacha.autoSyncAfterLogin`：登录绑定成功后是否自动同步一次抽卡记录
+- `smsdk.smSdkPath`：`sm.sdk.js` 文件路径（留空则自动尝试常见位置）
+- `card.cacheSec`：卡片详情缓存秒数（影响「卡片/面板/基建」）
+- `ann.enableTask` / `ann.cron`：公告推送任务开关与定时
+- `autoSign.enableTask` / `autoSign.cron`：自动签到任务开关与定时
+- `security.noShowSecretInGroup`：群聊不回显 `cred/token`（默认开启）
+
+修改配置后建议重启机器人。
 
 ## 指令速查
 
@@ -59,9 +83,19 @@ pnpm add qrcode
 
 ### 账号
 
-- `#zmd登录`
-- `#zmd绑定 <cred|token>`（支持 `cred=...` / `token=...`）
-- `#zmd查看` / `#zmd切换 <序号|UID>` / `#zmd删除 <序号|UID>`
+- `#zmd登录`（仅私聊）
+- `#zmd绑定 <cred|token>`（支持 `cred=...` / `token=...` 前缀；建议仅私聊）
+- `#zmd查看`
+- `#zmd切换 <序号|UID>`
+- `#zmd删除 <序号|UID>`
+
+### 查询
+
+- `#zmd每日` / `#zmd每日 @用户`
+- `#zmd卡片` / `#zmd卡片 @用户`
+- `#<角色>面板` / `#<角色>面板 @用户`（推荐，例如 `#霜星面板`）
+- `#zmd面板 <角色>`（旧用法，仍支持；别名：`#zmd查询` / `#zmdmb`）
+- `#zmd基建`（别名：`#zmd建设` / `#zmd地区建设` / `#zmdjj`；可加参数 `详细`）
 
 ### 抽卡记录
 
@@ -77,13 +111,49 @@ pnpm add qrcode
   - `#zmd导入抽卡记录 <u8_token/链接>` 或直接发送 JSON 文件
   - `#zmd导出抽卡记录`
   - `#zmd删除抽卡记录`
+- 其他：`#zmd抽卡帮助` / `#zmd抽卡工具`
 
-### 攻略（图鉴 / biligame wiki）
+### 公告
+
+- `#zmd公告` / `#zmd公告列表`
+- `#zmd公告 <id>`
+- `#zmd订阅公告` / `#zmd取消订阅公告`
+- `#zmd清理公告缓存`（仅 master）
+
+### 图鉴 / 攻略
 
 - `#zmd角色列表` / `#zmd武器列表`
 - `#zmd卡池`（别名：`#zmd卡池信息` / `#zmdup角色`）
-- `#zmd<名称>图鉴`（后缀可用：介绍/技能/天赋/潜能/专武/武器）
+- `#zmd<名称>图鉴`（后缀可用：`介绍/技能/天赋/潜能/专武/武器`）
+- `#zmd<名称>攻略`（查询攻略图）
+- `#zmd攻略资源下载` / `#zmd攻略资源更新`（管理员维护资源用）
 
+### 签到 / 其他
+
+- `#zmd签到`
+- `#zmd开启自动签到` / `#zmd关闭自动签到`
+- `#zmd全部签到`（仅 master）
+- `#zmd状态` / `#zmd更新日志`
+- `#zmd环境`（诊断 smsdk/qrcode 等依赖）
+
+## 数据与隐私
+
+- 账号绑定信息主要存储在 Redis；本插件目录会写入的本地文件（已在 `.gitignore` 排除）：
+  - `plugins/<插件目录>/data/gachalog/`：抽卡记录 JSON
+  - `plugins/<插件目录>/data/strategyimg/`：攻略资源/用户上传
+  - `plugins/<插件目录>/data/wiki/`：wiki 列表/页面缓存
+  - `temp/zmd-plugin/`：扫码二维码临时 PNG（渲染/排查用）
+
+## 常见问题
+
+1) 只回复文字、不出图
+   - 可能是 puppeteer/Chromium 环境未就绪；请先确认 TRSS 的渲染器可用，再重启机器人。
+2) 提示缺少依赖 `qrcode` / `node-fetch`
+   - 在 TRSS-Yunzai 根目录执行：`pnpm add qrcode node-fetch`，然后重启。
+3) 群聊里命令不触发
+   - 可能启用了“只响应@/前缀”；请 @机器人 或使用机器人别名开头（TRSS 群配置相关）。
+4) `#<角色>面板` 与其他插件冲突
+   - 仍可使用旧用法：`#zmd面板 <角色>`。
 
 ## 免责声明
 
@@ -101,8 +171,8 @@ pnpm add qrcode
 
 ## 参考
 
-- EndUID：`https://github.com/Loping151/EndUID`  主要逻辑实现参考
-- BeyondUID：`https://github.com/baiqwerdvd/BeyondUID/tree/master`  抽卡获取/记录逻辑参考
-- biligame wiki：`https://wiki.biligame.com/zmd/` wiki信息获取
+- EndUID：`https://github.com/Loping151/EndUID`（主要逻辑实现参考）
+- BeyondUID：`https://github.com/baiqwerdvd/BeyondUID/tree/master`（抽卡获取/记录逻辑参考）
+- biligame wiki：`https://wiki.biligame.com/zmd/`（wiki 信息获取）
 
 如你计划分发，请注意相关上游仓库的许可证要求。
