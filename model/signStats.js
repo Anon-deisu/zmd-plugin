@@ -36,6 +36,10 @@ export async function recordSuccess(count = 1, { date } = {}) {
   return incr(toDateStr(date), "success", count)
 }
 
+export async function recordSigned(count = 1, { date } = {}) {
+  return incr(toDateStr(date), "signed", count)
+}
+
 export async function recordFail(count = 1, { date } = {}) {
   return incr(toDateStr(date), "fail", count)
 }
@@ -46,10 +50,11 @@ export async function getCounts(dateStr) {
     const raw = (await redis.hGetAll(key)) || {}
     return {
       success: Number(raw.success) || 0,
+      signed: Number(raw.signed) || 0,
       fail: Number(raw.fail) || 0,
     }
   } catch {
-    return { success: 0, fail: 0 }
+    return { success: 0, signed: 0, fail: 0 }
   }
 }
 

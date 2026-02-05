@@ -373,3 +373,36 @@ export async function countBoundUsers() {
     return 0
   }
 }
+
+/**
+ * 统计已绑定的游戏 UID 数量。
+ *
+ * - userCount: 当前有绑定账号的 QQ 用户数
+ * - uidCount: 去重后的游戏 UID 数量（账号 uid 字段）
+ * - accountCount: 账号条目总数（不去重）
+ */
+export async function getBoundStats() {
+  const userIds = await listBoundUsers()
+  const uids = new Set()
+  let accountCount = 0
+  let userCount = 0
+
+  for (const userId of userIds) {
+    try {
+      const data = await getUserData(userId)
+      const accounts = Array.isArray(data?.accounts) ? data.accounts : []
+      if (accounts.length) userCount += 1
+      accountCount += accounts.length
+      for (const a of accounts) {
+        const uid = String(a?.uid || "").trim()
+        if (uid) uids.add(uid)
+      }
+    } catch {}
+  }
+
+  return {
+    userCount,
+    uidCount: uids.size,
+    accountCount,
+  }
+}

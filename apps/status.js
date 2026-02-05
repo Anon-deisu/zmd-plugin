@@ -12,7 +12,7 @@ import plugin from "../../../lib/plugins/plugin.js"
 import cfg from "../model/config.js"
 import { patchTempSessionReply } from "../model/reply.js"
 import { getTodayCounts, getYesterdayCounts } from "../model/signStats.js"
-import { countBoundUsers } from "../model/store.js"
+import { getBoundStats } from "../model/store.js"
 import { getUpdateLogs } from "../model/updateLog.js"
 
 const GAME_TITLE = "[终末地]"
@@ -38,15 +38,15 @@ export class status extends plugin {
 
   async status() {
     const e = this.e
-    const users = await countBoundUsers()
+    const bound = await getBoundStats()
     const today = await getTodayCounts()
     const yesterday = await getYesterdayCounts()
 
     const lines = [
       `${GAME_TITLE} 状态`,
-      `已绑定用户: ${users}`,
-      `今日签到: 成功 ${today.success} | 失败 ${today.fail}`,
-      `昨日签到: 成功 ${yesterday.success} | 失败 ${yesterday.fail}`,
+      `UID总数: ${bound.uidCount}（用户 ${bound.userCount} / 账号 ${bound.accountCount}）`,
+      `今日签到: 成功 ${today.success} | 已签 ${today.signed} | 失败 ${today.fail}`,
+      `昨日签到: 成功 ${yesterday.success} | 已签 ${yesterday.signed} | 失败 ${yesterday.fail}`,
       `缓存: card.cacheSec=${Number(cfg.card?.cacheSec) || 0}s`,
       `公告推送: ${cfg.ann?.enableTask ? "开启" : "关闭"} cron=${cfg.ann?.cron || ""}`,
     ].join("\n")

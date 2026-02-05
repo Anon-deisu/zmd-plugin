@@ -18,7 +18,7 @@ import { render as renderImg } from "../model/render.js"
 import { getCardDetailForUser } from "../model/card.js"
 import { updateGachaLogsForUser } from "../model/gachalog.js"
 import { getQueryUserId } from "../model/mention.js"
-import { recordFail, recordSuccess } from "../model/signStats.js"
+import { recordFail, recordSigned, recordSuccess } from "../model/signStats.js"
 import {
   deleteAccount,
   getActiveAccount,
@@ -310,7 +310,10 @@ async function runAutoSignAll() {
           await recordSuccess(1)
           return `${userId}: ✅ ${account.nickname || account.uid}`
         }
-        if (res.code === 10001) return `${userId}: ☑️ 已签 ${account.nickname || account.uid}`
+        if (res.code === 10001) {
+          await recordSigned(1)
+          return `${userId}: ☑️ 已签 ${account.nickname || account.uid}`
+        }
 
         await recordFail(1)
         return `${userId}: ❌ ${account.nickname || account.uid} ${res.message || res.code}`
@@ -816,6 +819,7 @@ export class enduid extends plugin {
       return true
     }
     if (res.code === 10001) {
+      await recordSigned(1)
       await e.reply(`${GAME_TITLE} ☑️ [${account.nickname || account.uid}] 今日已签到`, true)
       return true
     }
@@ -868,7 +872,10 @@ export class enduid extends plugin {
             await recordSuccess(1)
             return { status: "success", message: `✅ ${label}` }
           }
-          if (res.code === 10001) return { status: "signed", message: `☑️ 已签 ${label}` }
+          if (res.code === 10001) {
+            await recordSigned(1)
+            return { status: "signed", message: `☑️ 已签 ${label}` }
+          }
 
           await recordFail(1)
           return { status: "fail", message: `❌ ${label} ${res.message || res.code}` }
