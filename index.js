@@ -13,8 +13,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const appsDir = path.join(__dirname, "apps")
 
-// `strategy.js` 体积较大/包含更多 IO，这里刻意不纳入自动加载。
-const files = fs.readdirSync(appsDir).filter(file => file.endsWith(".js") && file !== "strategy.js")
+const files = fs.readdirSync(appsDir).filter(file => file.endsWith(".js"))
 
 // 逐个动态导入：某个 app 报错时不影响其它模块加载。
 let ret = []

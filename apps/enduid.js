@@ -437,8 +437,8 @@ export class enduid extends plugin {
         ],
       },
       {
-        title: "攻略",
-        desc: "图鉴/列表（biligame wiki）",
+        title: "图鉴",
+        desc: "biligame wiki：列表/卡池/图鉴查询",
         items: [
           { name: "角色列表", cmd: `${p}角色列表`, desc: "" },
           { name: "武器列表", cmd: `${p}武器列表`, desc: "" },
@@ -538,7 +538,7 @@ export class enduid extends plugin {
       `【推送】`,
       `- ${p}订阅公告 / ${p}取消订阅公告  （群聊）`,
       ``,
-      `【攻略】`,
+      `【图鉴】`,
       `- ${p}角色列表 / ${p}武器列表 / ${p}卡池`,
       `- ${p}<名称>图鉴  （可用：介绍/技能/天赋/潜能/专武/武器）`,
       ``,
