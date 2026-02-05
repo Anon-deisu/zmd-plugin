@@ -87,7 +87,7 @@ export class gachalog extends plugin {
     const p = String(cfg.cmd?.prefix || "#zmd")
     const lines = [
       `${GAME_TITLE} 抽卡帮助`,
-      `1) 登录后刷新：${p}更新抽卡记录 / ${p}更新抽卡记录1234567890`,
+      `1) 登录后刷新：${p}更新抽卡记录 / ${p}更新抽卡记录1234567890 / ${p}更新抽卡记录 @用户`,
       `2) 导入 u8_token：${p}导入抽卡记录 <u8_token 或含 u8_token= 的链接>`,
       `3) 导入 JSON 文件：${p}导入抽卡记录（直接发送文件）`,
       ``,
@@ -210,12 +210,6 @@ export class gachalog extends plugin {
     const targetId = String(queryUserId ?? "")
     const isOther = !!targetId && !!callerId && targetId !== callerId
 
-    if (isOther && !e.isMaster) {
-      const p = String(cfg.cmd?.prefix || "#zmd")
-      await e.reply(`${GAME_TITLE} 仅支持更新自己的抽卡记录；管理员可用：${p}更新抽卡记录 @用户`, true)
-      return true
-    }
-
     const roleId = !isOther ? parseRoleIdFromCommand(e.msg, "refresh") : ""
     const res = roleId
       ? await updateGachaLogsForRoleId(e.user_id, roleId)
@@ -247,7 +241,7 @@ export class gachalog extends plugin {
 
     const roleId = !isOther ? parseRoleIdFromCommand(e.msg, "show") : ""
     const res = roleId
-      ? await getGachaLogViewForRoleId(roleId, { userId: e.user_id, allowUnbound: !!e.isMaster })
+      ? await getGachaLogViewForRoleId(roleId, { userId: e.user_id, allowUnbound: true })
       : await getGachaLogViewForUser(queryUserId)
     if (!res.ok) {
       await e.reply(res.message, true)
