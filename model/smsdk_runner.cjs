@@ -1,3 +1,10 @@
+/**
+ * smsdk 运行器（独立进程）。
+ *
+ * `sm.sdk.js` 是面向浏览器环境的第三方脚本。
+ * 这里在单独的 Node 进程里构造一个最小的“类 DOM 沙箱”运行它，
+ * 提取用于 Skland 签名的 dId。
+ */
 /* eslint-disable no-console */
 const fs = require("fs")
 const http = require("http")
@@ -324,4 +331,3 @@ function poll() {
 }
 
 poll()
-

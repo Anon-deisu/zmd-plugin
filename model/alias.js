@@ -1,3 +1,13 @@
+/**
+ * 角色别名库。
+ *
+ * - 模板：model/alias_template.json（随插件发布的默认别名）
+ * - 存储：Redis Key `Yz:EndUID:AliasMap`
+ *
+ * 运行时会合并“模板 + 已存储数据”，保证：
+ * - 用户自定义别名不会被覆盖
+ * - 插件更新默认别名时仍能生效
+ */
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"

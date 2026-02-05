@@ -1,3 +1,9 @@
+/**
+ * 基建/飞船（基础建设）指令入口。
+ *
+ * - 数据：model/card.js（Skland 卡片详情）
+ * - 渲染：resources/enduid/build.html
+ */
 import plugin from "../../../lib/plugins/plugin.js"
 
 import cfg from "../model/config.js"

@@ -1,3 +1,11 @@
+/**
+ * 卡片/面板指令入口。
+ *
+ * 主要负责：
+ * - 解析用户输入（UID / 别名）
+ * - 调用 model/card.js 获取数据
+ * - 调用 model/render.js 渲染图片
+ */
 import plugin from "../../../lib/plugins/plugin.js"
 
 import cfg from "../model/config.js"

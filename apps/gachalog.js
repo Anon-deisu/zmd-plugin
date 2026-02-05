@@ -1,3 +1,9 @@
+/**
+ * 抽卡记录指令入口。
+ *
+ * 数据同步/导入导出在 model/gachalog.js；
+ * 这里负责解析消息、调用更新/导出并渲染概览图片。
+ */
 import plugin from "../../../lib/plugins/plugin.js"
 import fetch from "node-fetch"
 

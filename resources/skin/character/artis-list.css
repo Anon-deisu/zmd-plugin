@@ -1,3 +1,9 @@
+/*
+  skin/character/artis-list.css
+
+  皮肤资源库的角色养成/圣遗物列表样式。
+  该文件仅影响渲染外观，不参与业务逻辑。
+*/
 .container {
   width: 790px;
 }

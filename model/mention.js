@@ -1,3 +1,10 @@
+/**
+ * @用户/文本解析辅助。
+ *
+ * 不同适配器下 TRSS/Yunzai 的消息结构不完全一致，这里同时兼容：
+ * - 结构化的 e.message 段（segment）
+ * - e.msg 中的 CQ 码/文本形式
+ */
 function normalizeId(value) {
   const v = value == null ? "" : String(value).trim()
   return v
@@ -71,4 +78,3 @@ export function getMessageText(e, { stripAt = true } = {}) {
   const text = parts.join("")
   return text ? text : normalizeId(e?.msg)
 }
-

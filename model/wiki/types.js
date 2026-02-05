@@ -1,3 +1,6 @@
+/**
+ * Wiki 常量。
+ */
 export const WIKI_BASE_URL = "https://wiki.biligame.com/zmd/"
 export const WIKI_HOME_URL = "https://wiki.biligame.com/zmd/%E9%A6%96%E9%A1%B5"
 

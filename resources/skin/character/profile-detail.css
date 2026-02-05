@@ -1,3 +1,9 @@
+/*
+  skin/character/profile-detail.css
+
+  角色详情/面板样式。
+  当前插件用于面板渲染（resources/enduid/panel.html）。
+*/
 .font-YS {
   font-family: Number, "汉仪文黑-65W", YS, PingFangSC-Medium, "PingFang SC", sans-serif;
 }

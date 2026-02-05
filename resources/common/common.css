@@ -1,4 +1,12 @@
 @charset "UTF-8";
+
+/*
+  通用基础样式（resources/common/common.css）
+
+  使用场景：
+  - resources/common/layout/default.html
+  - 其它模板可复用字体/容器/通用组件样式
+*/
 @font-face {
   font-family: "FZB";
   src: url("./font/FZB.woff") format("woff"), url("./font/FZB.ttf") format("truetype");

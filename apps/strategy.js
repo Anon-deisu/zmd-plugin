@@ -1,3 +1,9 @@
+/**
+ * 攻略资源指令入口。
+ *
+ * 支持从 GitHub 下载/更新资源，也支持用户上传图片；
+ * 文件写入 `data/strategyimg/`（已在 .gitignore 中排除）。
+ */
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"

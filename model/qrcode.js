@@ -1,3 +1,9 @@
+/**
+ * 扫码登录二维码生成。
+ *
+ * 这里刻意不依赖外部 Python，直接使用 Node 包 `qrcode` 生成 PNG。
+ * 输出写入 TRSS 根目录的 `temp/<plugin>/`，便于自动清理与排查。
+ */
 import fs from "node:fs/promises"
 import path from "node:path"
 

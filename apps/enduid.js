@@ -1,3 +1,11 @@
+/**
+ * 核心指令入口：绑定/登录、每日、签到、环境诊断等。
+ *
+ * 本文件以“编排/调用”为主：
+ * - Redis 存储：model/store.js
+ * - Skland 网络/签名：model/skland/*
+ * - 图片渲染：model/render.js + resources/enduid/*
+ */
 import fs from "node:fs/promises"
 import path from "node:path"
 import fsSync from "node:fs"

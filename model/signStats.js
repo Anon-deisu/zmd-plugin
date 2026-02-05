@@ -1,3 +1,9 @@
+/**
+ * 签到统计。
+ *
+ * 仅记录每天的成功/失败聚合计数，存储为 Redis hash，
+ * 并设置滚动过期（默认 14 天）。
+ */
 const KEY_SIGN_STATS = dateStr => `Yz:EndUID:SignStats:${dateStr}`
 const EXPIRE_DAYS = 14
 
@@ -54,4 +60,3 @@ export async function getTodayCounts() {
 export async function getYesterdayCounts() {
   return getCounts(getYesterdayDateStr())
 }
-

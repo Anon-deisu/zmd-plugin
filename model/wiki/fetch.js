@@ -1,3 +1,10 @@
+/**
+ * Wiki 抓取与缓存层。
+ *
+ * - 抓取 biligame wiki 的 HTML 页面
+ * - 解析为结构化 JSON（见 model/wiki/parser.js）
+ * - 将列表/详情缓存到 `data/wiki/`，降低网络开销
+ */
 import fsSync from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -16,6 +23,7 @@ import {
 
 import { PLUGIN_DATA_DIR } from "../pluginMeta.js"
 
+// 缓存位于插件 data 目录（已在 .gitignore 中排除）。
 const DATA_DIR = path.join(PLUGIN_DATA_DIR, "wiki")
 
 const LIST_JSON_PATH = path.join(DATA_DIR, LIST_CACHE_FILE)
@@ -75,6 +83,7 @@ function isListStale(data) {
   return now.getTime() >= boundary.getTime()
 }
 
+// 串行化网络抓取：更“礼貌”，也降低触发反爬的概率。
 let _lock = Promise.resolve()
 function withFetchLock(fn) {
   const run = _lock.then(() => fn())

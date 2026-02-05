@@ -1,3 +1,9 @@
+/**
+ * 状态/更新日志指令入口。
+ *
+ * - 状态：绑定用户数 + 签到统计
+ * - 更新日志：从 git 提交信息生成简短列表
+ */
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 

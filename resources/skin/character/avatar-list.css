@@ -1,3 +1,9 @@
+/*
+  skin/character/avatar-list.css
+
+  角色头像列表样式。
+  当前插件用于抽卡记录渲染（resources/enduid/gachalog.html）。
+*/
 .container {
   width: 740px;
   background-size: cover;

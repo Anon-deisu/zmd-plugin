@@ -1,3 +1,9 @@
+/**
+ * Wiki HTML 解析器。
+ *
+ * biligame wiki 并非标准 JSON API，这里通过字符串/正则启发式 + 简易 HTML 分析
+ * 提取结构化数据。
+ */
 import { BANNER_CYCLE_SECONDS } from "./types.js"
 
 const STAR_RARITY_MAP = {
@@ -30,6 +36,7 @@ const WEAPON_RARITY_ALT_MAP = {
 
 function decodeHtml(text) {
   const s = String(text || "")
+  // 简化版实体解码：满足 wiki 页面中常见的转义即可。
   return s
     .replaceAll("&nbsp;", " ")
     .replaceAll("&amp;", "&")
@@ -42,8 +49,10 @@ function decodeHtml(text) {
 
 function stripTags(html) {
   let s = String(html || "")
+  // wiki 页面可能夹带脚本/样式，先剔除再做纯文本抽取。
   s = s.replace(/<script[\s\S]*?<\/script>/gi, "")
   s = s.replace(/<style[\s\S]*?<\/style>/gi, "")
+  // 将常见的“换行语义”标签替换为 \n，便于后续 split/trim。
   s = s.replace(/<br\s*\/?>/gi, "\n")
   s = s.replace(/<\/(p|div|tr|li|table|tbody|thead|section)>/gi, "\n")
   s = s.replace(/<[^>]+>/g, "")
@@ -64,6 +73,7 @@ function splitList(text) {
 
 function parseAttrs(tag) {
   const attrs = {}
+  // 只解析双引号/单引号包裹的属性值，够用且更稳。
   const re = /([:\w-]+)\s*=\s*(\"([^\"]*)\"|'([^']*)')/g
   let m
   while ((m = re.exec(tag))) {
@@ -84,6 +94,7 @@ function normalizeUrl(url) {
 function bestImgUrl(attrs) {
   const srcset = String(attrs.srcset || "").trim()
   if (srcset) {
+    // srcset: "url 1x, url 2x" -> 取倍率最大的那张。
     let best = ""
     let bestScale = 0
     for (const partRaw of srcset.split(",")) {
@@ -104,6 +115,7 @@ function bestImgUrl(attrs) {
 
   let src = normalizeUrl(attrs.src || "")
   if (src.includes("/thumb/")) {
+    // thumb 链接可能是 48px/80px 等过小版本，这里尽量提升到 120px 以便展示。
     const m = src.match(/\/(\d+)px-/)
     if (m?.[1]) {
       const px = Number.parseInt(m[1], 10)
@@ -115,6 +127,7 @@ function bestImgUrl(attrs) {
 }
 
 function parseBasicInfoFromFirstTable(html) {
+  // 通用解析：角色/武器页面的“基础信息”通常在第一个 wikitable 表格内。
   const tableMatch = html.match(/<table[^>]*class=\"[^\"]*wikitable[^\"]*\"[^>]*>([\s\S]*?)<\/table>/i)
   if (!tableMatch?.[1]) return {}
 
@@ -183,6 +196,7 @@ function parseTimestamp(raw) {
 }
 
 function parseActivityBlock(blockHtml, { bannerType }) {
+  // 首页的卡池活动块结构不稳定：这里只抽取名称/目标图/时间戳等核心字段。
   const activityListMatch = blockHtml.match(
     /<div[^>]*class=\"[^\"]*\bactivityList\b[^\"]*\"[^>]*>([\s\S]*?)<\/div>/i,
   )
@@ -247,6 +261,7 @@ function fillCharBannerTimes(banners) {
   if (!charBanners.length) return
   if (!charBanners[0].end_timestamp) return
 
+  // wiki 有时只在第一个卡池标注了结束时间；后续卡池按固定周期顺延。
   for (let i = 1; i < charBanners.length; i++) {
     const prev = charBanners[i - 1]
     charBanners[i].start_timestamp = prev.end_timestamp
@@ -272,6 +287,7 @@ export function parseHomepage(html) {
     const attribute = String(attrs["data-param3"] || "").trim()
 
     const start = m.index
+    // 仅截取一段局部 HTML 做启发式解析，避免全量解析器带来的复杂度与性能开销。
     const slice = source.slice(start, Math.min(source.length, start + 1800))
     const aMatch = slice.match(/<a[^>]*title=(\"([^\"]*)\"|'([^']*)')/i)
     const name = aMatch?.[2] ?? aMatch?.[3] ?? ""
@@ -316,6 +332,7 @@ export function parseHomepage(html) {
   let cm
   while ((cm = charActivityRe.exec(source))) {
     const start = cm.index
+    // 活动块内容更长，给更大的 slice 窗口。
     const block = source.slice(start, Math.min(source.length, start + 8000))
     const b = parseActivityBlock(block, { bannerType: "character" })
     if (b) banners.push(b)

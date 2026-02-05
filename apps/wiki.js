@@ -1,3 +1,8 @@
+/**
+ * 图鉴（biligame wiki）指令入口。
+ *
+ * 使用 model/wiki/* 抓取/缓存/解析 wiki 页面，并格式化为文本回复。
+ */
 import common from "../../../lib/common/common.js"
 import plugin from "../../../lib/plugins/plugin.js"
 

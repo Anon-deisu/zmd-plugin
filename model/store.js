@@ -1,5 +1,18 @@
+/**
+ * Redis 持久化存储。
+ *
+ * 存储内容：
+ * - QQ 用户绑定的账号列表 + 当前激活账号 + 自动签到开关
+ * - 短期 token 缓存（按 md5(cred) 作为 key，避免明文泄露）
+ * - 扫码登录所需的 Hypergryph 设备信息（headers）
+ *
+ * 兼容说明：
+ * - 保留历史 key 前缀 `Yz:EndUID:*`，避免老数据丢失
+ * - normalizeUserDataShape() 兼容多种旧数据结构并自动升级
+ */
 import crypto from "node:crypto"
 
+// 历史 key 命名空间（不要轻易改动；线上可能已存在大量存量数据）。
 const KEY_USER_PREFIX = "Yz:EndUID:User:"
 const KEY_USER = userId => `${KEY_USER_PREFIX}${userId}`
 const KEY_TOKEN = cred => `Yz:EndUID:Token:${crypto.createHash("md5").update(String(cred)).digest("hex")}`
@@ -136,6 +149,7 @@ function normalizeUserDataShape(parsed) {
   let data = null
   let needsSave = false
 
+  // 旧版本可能只存了“账号数组”。
   if (Array.isArray(parsed)) {
     data = { accounts: parsed, active: 0, autoSign: false }
     needsSave = true
@@ -144,6 +158,7 @@ function normalizeUserDataShape(parsed) {
     const active = obj.active ?? obj.activeIndex ?? obj.activeUid ?? obj.currentUid ?? 0
     const autoSign = obj.autoSign ?? obj.auto_sign ?? obj.autoSignIn ?? false
 
+    // 当前结构：{ accounts: [...], active, autoSign }
     if (Array.isArray(obj.accounts)) {
       data = obj
       if (data.active == null && (obj.activeIndex != null || obj.activeUid != null || obj.currentUid != null)) needsSave = true
@@ -208,6 +223,7 @@ export async function saveUserData(userId, data) {
 
   const hasAccounts = Array.isArray(data?.accounts) && data.accounts.length > 0
   try {
+    // 额外维护一个“已绑定用户集合”，用于快速统计/枚举（比 scan 全库 key 更轻）。
     if (hasAccounts) await redis.sAdd(KEY_USERS, String(userId))
     else await redis.sRem(KEY_USERS, String(userId))
   } catch {}
@@ -223,6 +239,7 @@ export async function getActiveAccount(userId) {
   const isIntStr = rawStr && /^-?\d+$/.test(rawStr)
   const rawNum = isIntStr ? Number(rawStr) : Number.isFinite(raw) ? Number(raw) : NaN
 
+  // active 既兼容“下标”，也兼容“UID 字符串”（历史版本可能存不同类型）。
   let idx = -1
   if (Number.isFinite(rawNum)) {
     if (rawNum >= 0 && rawNum < accounts.length) idx = rawNum
@@ -297,6 +314,7 @@ export async function deleteAccount(userId, target) {
   if (!data.accounts.length) {
     data.active = 0
     data.autoSign = false
+    // 删除最后一个账号时，自动签到集合也要同步移除。
     await redis.sRem(KEY_AUTOSIGN_USERS, String(userId))
   } else if (Number(data.active) >= data.accounts.length) {
     data.active = 0
@@ -329,6 +347,8 @@ export async function listBoundUsers() {
     for (const id of fromSet) out.add(String(id))
   } catch {}
 
+  // 兜底：历史/异常情况下 KEY_USERS 可能漏数据，因此再扫一遍 KEY_USER_PREFIX。
+  // 注意：scan 可能比较慢，这里属于 best-effort。
   try {
     let cursor = 0
     const MATCH = `${KEY_USER_PREFIX}*`

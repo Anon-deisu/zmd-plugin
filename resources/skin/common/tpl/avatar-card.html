@@ -1,3 +1,11 @@
+<!--
+  skin/common/tpl/avatar-card.html
+
+  皮肤资源库的“角色卡片”局部模板。
+  约定输入：
+  - $data[0] = avatar
+  - $data[1] = { _res_path, cardType }
+-->
 {{set avatar = $data[0] || false }}
 {{set {_res_path, cardType} = $data[1]}}
 {{set weapon = avatar.weapon || {} }}

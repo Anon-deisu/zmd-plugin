@@ -1,3 +1,11 @@
+/**
+ * Skland 请求头构造器。
+ *
+ * Skland 在不同接口/场景下需要不同的 headers，例如：
+ * - oauth/refresh
+ * - Skland App 接口
+ * - 终末地 WebView 接口
+ */
 import config from "../config.js"
 
 export const SIGN_VNAME = "1.0.0"
@@ -88,4 +96,3 @@ export function buildBaseHeader({
   if (uid && gameId) headers["sk-game-role"] = `${platform}_${uid}_${gameId}`
   return headers
 }
-

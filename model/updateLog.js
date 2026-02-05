@@ -1,3 +1,9 @@
+/**
+ * 更新日志提取器。
+ *
+ * 读取 `git log` 的提交标题，仅保留以 emoji 开头的条目，
+ * 生成用于 `apps/status.js` 展示的简短更新列表。
+ */
 import { spawnSync } from "node:child_process"
 
 function extractLeadingEmoji(message) {
@@ -32,4 +38,3 @@ export function getUpdateLogs({ cwd, maxItems = 18, maxGit = 100 } = {}) {
   } catch {}
   return out
 }
-

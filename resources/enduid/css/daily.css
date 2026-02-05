@@ -1,3 +1,9 @@
+/*
+  enduid/daily 专用样式
+
+  对应模板：resources/enduid/daily.html
+  特点：不依赖图片资源，背景与面板效果由 CSS 渐变生成。
+*/
 .container {
   background: radial-gradient(1200px 600px at 0% 0%, #e0f2fe 0%, rgba(224, 242, 254, 0) 55%),
     radial-gradient(900px 480px at 100% 0%, #ede9fe 0%, rgba(237, 233, 254, 0) 55%),
@@ -114,4 +120,3 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
   opacity: 1;
 }
-

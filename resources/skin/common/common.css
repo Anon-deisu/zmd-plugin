@@ -1,3 +1,9 @@
+/*
+  skin/common/common.css
+
+  皮肤资源库的通用样式与字体声明。
+  由 resources/common/layout/skin.html 引入。
+*/
 @font-face {
   font-family: 'Number';
   src: url("./font/tttgbnumber.woff") format('woff'), url("./font/tttgbnumber.ttf") format('truetype');

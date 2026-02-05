@@ -1,3 +1,9 @@
+/**
+ * 武器别名解析器。
+ *
+ * 使用内置 map_weapon.json 将常见别名/昵称映射为规范武器名。
+ * 由于 JSON 不支持注释，说明请写在本文件中。
+ */
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"

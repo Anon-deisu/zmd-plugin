@@ -1,3 +1,8 @@
+/**
+ * 公告指令入口。
+ *
+ * 获取列表/详情、缓存、群订阅与推送任务等逻辑在 model/ann.js。
+ */
 import plugin from "../../../lib/plugins/plugin.js"
 
 import cfg from "../model/config.js"

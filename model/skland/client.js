@@ -1,3 +1,12 @@
+/**
+ * Skland HTTP 客户端。
+ *
+ * 负责：
+ * - token 刷新与短期缓存
+ * - 请求签名生成（HMAC + MD5）
+ * - 对需要 dId 的接口，通过 smsdk 生成 dId
+ * - 不同场景（app / webview / oauth）的通用 headers 组装
+ */
 import fetch from "node-fetch"
 
 import config from "../config.js"
@@ -32,6 +41,7 @@ import { getDeviceId } from "./deviceId.js"
 
 function buildQueryString(params) {
   if (!params) return ""
+  // 参数按 key 排序：保证签名用的 query string 稳定。
   const entries = Object.entries(params)
     .filter(([_, v]) => v !== undefined && v !== null && `${v}` !== "")
     .sort(([a], [b]) => (a > b ? 1 : a < b ? -1 : 0))
@@ -40,6 +50,7 @@ function buildQueryString(params) {
 }
 
 async function readJsonSafe(resp) {
+  // Skland 可能返回非 JSON 的错误体；解析失败则当作 null。
   const text = await resp.text()
   try {
     return JSON.parse(text)
@@ -63,6 +74,7 @@ export async function refreshToken(cred, { force = false } = {}) {
   const c = String(cred || "").trim()
   if (!c) return ""
 
+  // token 缓存 key = md5(cred)，避免把敏感信息直接写入 key。
   const key = tokenKeyByCred(c)
   if (!force) {
     const cached = await redis.get(key)
@@ -106,6 +118,7 @@ export async function request({
   const c = String(cred || "").trim()
   if (!c) throw new Error("missing cred")
 
+  // 绝大多数接口都需要短期 token。
   const token = await refreshToken(c)
   if (!token) return null
 
@@ -118,6 +131,7 @@ export async function request({
   let finalUrl = url
   if (method === "GET" && queryString) finalUrl = `${url}?${queryString}`
 
+  // 签名输入：GET 用 query；POST 用 query + body。
   const payloadString = method === "GET" ? queryString : `${queryString}${bodyString}`
 
   const effectiveUserAgent =
@@ -126,6 +140,7 @@ export async function request({
     extraHeaders?.["user-agent"] ||
     config.skland.ua.android
 
+  // dId 为可选字段：只有部分接口/场景需要。
   let did = ""
   if (useDeviceId) {
     const acceptLanguage =
@@ -142,6 +157,7 @@ export async function request({
     did = await getDeviceId({ userAgent: effectiveUserAgent, acceptLanguage, referer })
   }
 
+  // 签名必须与 path/query/body/timestamp/headerJson 完全一致。
   const signData = generateSign({
     token,
     path: apiPath,
@@ -173,6 +189,7 @@ export async function request({
   })
 
   const json = await readJsonSafe(resp)
+  // 400/403 常见于签名/鉴权失败：尽量把服务端的 JSON 错误体透传出去，便于提示与排查。
   if (resp.status === 400 || resp.status === 403) return json || null
   if (resp.status !== 200) return null
   return json || null
@@ -224,6 +241,11 @@ export async function getCardDetail(cred, { uid, serverId = "1", userId }) {
 }
 
 export async function getScanId(userId) {
+  // 扫码登录流程（Hypergryph）：
+  // 1) 获取 scanId + scanUrl（用于生成二维码）；
+  // 2) 轮询 scanId 状态拿到 scanCode；
+  // 3) scanCode 换取 token/deviceToken；
+  // 4) token 走 oauth -> cred，得到最终 cred。
   const resp = await fetch(SCAN_LOGIN_API, {
     method: "POST",
     headers: await getHypergryphHeaders(userId, { json: false }),
@@ -238,6 +260,7 @@ export async function getScanId(userId) {
 }
 
 export async function getScanStatus(scanId, userId) {
+  // 轮询扫码状态：用户在 App 内确认后才会下发 scanCode。
   const url = `${SCAN_STATUS_API}?scanId=${encodeURIComponent(scanId)}`
   const resp = await fetch(url, { method: "GET", headers: await getHypergryphHeaders(userId, { json: false }) })
   const data = await readJsonSafe(resp)
@@ -246,6 +269,7 @@ export async function getScanStatus(scanId, userId) {
 }
 
 export async function getTokenByScanCode(scanCode, userId) {
+  // scanCode -> token/deviceToken，用于后续换取 Skland cred。
   const resp = await fetch(TOKEN_BY_SCAN_CODE_API, {
     method: "POST",
     headers: await getHypergryphHeaders(userId),
@@ -260,12 +284,15 @@ export async function getTokenByScanCode(scanCode, userId) {
 }
 
 export async function getCredInfoByToken(token, { userId } = {}) {
+  // token -> oauth code -> cred
+  // 说明：这一步使用的是 Web 环境的 dId/headers（与 Skland App headers 不同）。
   const resp = await fetch(OAUTH_API, {
     method: "POST",
     headers: await getHypergryphHeaders(userId),
     body: JSON.stringify({ appCode: APP_CODE, token, type: 0 }),
   })
 
+  // 405 一般表示接口拒绝当前请求方法/来源（可能与风控、接口变更有关）。
   if (resp.status === 405) return { error: "405" }
 
   const oauth = await readJsonSafe(resp)

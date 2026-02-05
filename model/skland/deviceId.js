@@ -1,3 +1,10 @@
+/**
+ * 设备 ID（dId）生成器。
+ *
+ * 部分 Skland 接口的签名需要 dId 参与。
+ * 这里通过单独的 Node 子进程运行第三方 `sm.sdk.js`
+ *（见 model/smsdk_runner.cjs）生成 dId，避免污染主进程环境。
+ */
 import fs from "node:fs"
 import path from "node:path"
 import { spawn } from "node:child_process"
@@ -11,6 +18,7 @@ const __dirname = path.dirname(__filename)
 const pluginRoot = path.resolve(__dirname, "..", "..")
 const runnerPath = path.join(pluginRoot, "model", "smsdk_runner.cjs")
 
+// 进程内缓存：减少昂贵的 `sm.sdk.js` 执行次数。
 const cache = new Map()
 
 function exists(p) {
@@ -24,7 +32,7 @@ function exists(p) {
 function guessDefaultSmSdkCandidates() {
   const candidates = []
 
-  // Prefer plugin-local copy (stable even if Desktop source is removed)
+  // 优先使用插件内置 copy（即使桌面源码删除也更稳定）。
   candidates.push(path.join(pluginRoot, "sm.sdk.js"))
   candidates.push(path.join(pluginRoot, "model", "sm.sdk.js"))
 
@@ -56,6 +64,7 @@ function execNodeGetDid({ smsdkPath, env, timeoutMs }) {
 
     let stdout = ""
     let stderr = ""
+    // 硬超时：防止 smsdk 卡死导致任务一直挂起。
     const timer = setTimeout(() => {
       try {
         child.kill()
@@ -99,6 +108,7 @@ export async function getDeviceId({ userAgent, acceptLanguage, referer, platform
   const cacheSec = Number(config.smsdk?.cacheSec ?? 0) || 0
   const timeoutMs = Number(config.smsdk?.timeoutMs ?? 15000) || 15000
 
+  // 缓存 key 需要包含 smsdk 路径 + 可能影响 dId 的参数，避免错用缓存。
   const cacheKey = JSON.stringify({
     smsdkPath,
     userAgent: userAgent || "",
@@ -112,6 +122,7 @@ export async function getDeviceId({ userAgent, acceptLanguage, referer, platform
     if (cached && Date.now() - cached.time < cacheSec * 1000) return cached.did
   }
 
+  // 通过环境变量传参，避免改动第三方 sdk 文件本体。
   const env = {
     ...process.env,
     SMSDK_TIMEOUT: String(timeoutMs),

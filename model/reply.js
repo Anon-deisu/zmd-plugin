@@ -1,3 +1,11 @@
+/**
+ * 临时会话回复修复。
+ *
+ * OneBotv11 的私聊临时会话（sub_type=group）可能携带 group_id，
+ * 某些 TRSS 适配器会把 e.reply() 错路由到群聊。
+ *
+ * patchTempSessionReply() 会重写 e.reply，使其强制走私聊发送。
+ */
 function isTempSession(e) {
   return Boolean(e && e.message_type === "private" && e.group_id)
 }
@@ -53,4 +61,3 @@ export function patchTempSessionReply(e) {
     return res
   }
 }
-

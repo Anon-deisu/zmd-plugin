@@ -1,3 +1,16 @@
+/**
+ * 抽卡记录数据模块。
+ *
+ * 功能：
+ * - 从终末地 WebView 接口同步抽卡记录
+ * - JSON 导入/导出（备份/分享）
+ * - 生成渲染用的视图数据（供 apps/gachalog.js 使用）
+ *
+ * 说明：
+ * - 依赖 Redis 存储账号/设备信息，并用于枚举已绑定用户
+ * - 内置小型进程缓存（roleId -> QQ userId），支持“按角色ID查询”时显示正确头像，
+ *   同时避免频繁全量扫描
+ */
 import fsSync from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -33,11 +46,14 @@ const CHARACTER_POOL_TYPES = [
   "E_CharacterGachaPoolType_Standard",
 ]
 
+// 保留历史 key 命名空间：避免老用户数据迁移困难。
 const KEY_USERS = "Yz:EndUID:Users"
 const ROLE_OWNER_TTL_MS = 10 * 60 * 1000
 const ROLE_OWNER_NEGATIVE_TTL_MS = 60 * 1000
+// roleId -> { userId, ts }，用于减少“扫描所有绑定用户”带来的开销。
 const roleOwnerCache = new Map()
 
+// 并发保护：同一 user/role 只允许一个更新任务，避免竞态写入。
 const running = new Set()
 
 function safeJsonParse(text, fallback) {
@@ -364,6 +380,8 @@ async function getU8TokenByUid(uid, grantToken, { userId } = {}) {
 }
 
 async function getU8Token({ recordUid, roleId, hgToken, deviceToken, userId }) {
+  // 抽卡记录接口需要 u8 token；它的获取链路比较绕：
+  // hgToken(登录态) -> grantToken(oauth) -> bindingList(uid) -> u8Token
   const grantToken = await getBindingGrantToken(hgToken, { deviceToken, userId })
   const binding = await getBindingList(grantToken, { userId, roleId })
   const uid = binding?.uid || String(recordUid || "").trim()
@@ -373,6 +391,8 @@ async function getU8Token({ recordUid, roleId, hgToken, deviceToken, userId }) {
 }
 
 async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {}, existingMaxSeqId = 0 } = {}) {
+  // 终末地抽卡记录为分页接口：使用 seq_id 向后翻页，直到 hasMore=false。
+  // 若传入 existingMaxSeqId，则遇到 <= max 的记录即提前停止（增量更新）。
   let hasMore = true
   let seqId = 0
   const records = []
@@ -412,6 +432,7 @@ async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {}, 
     if (list.length) seqId = safeInt(list[list.length - 1]?.seqId)
     else break
 
+    // 小延迟：避免短时间内高频请求触发风控。
     await sleep(100)
   }
 
@@ -478,6 +499,7 @@ async function updateGachaLogsForAccount(userId, account) {
     return { ok: false, message: "[终末地] 抽卡记录需要 Hypergryph token，请先私聊 #zmd登录 重新绑定" }
   }
 
+  // 并发保护：同一个 roleId 的刷新流程会读写同一份本地 JSON。
   if (running.has(roleId)) return { ok: false, message: "[终末地] 抽卡记录正在刷新中，请稍后再试（请勿重复触发）" }
   running.add(roleId)
 

@@ -1,3 +1,10 @@
+/**
+ * 插件配置加载器。
+ *
+ * 首次启动时通过 TRSS 的 makeConfig() 生成 `config/zmd-plugin.yaml`。
+ * 若检测到旧的 `config/enduid-yunzai.yaml` 且新配置不存在，会将旧配置
+ * 合并迁移到新文件（单向迁移，保留用户设置）。
+ */
 import fsSync from "node:fs"
 import fs from "node:fs/promises"
 
@@ -78,7 +85,7 @@ const DEFAULT_CONFIG = {
   },
 }
 
-// Migration: if user already has config/enduid-yunzai.yaml, merge it into the new config.
+// 迁移：如果存在旧的 config/enduid-yunzai.yaml 且新配置不存在，则合并到新配置里。
 const baseConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG))
 try {
   const newCfgFile = `config/${PLUGIN_ID}.yaml`

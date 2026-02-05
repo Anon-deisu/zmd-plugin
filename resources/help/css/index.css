@@ -1,5 +1,12 @@
 @charset "UTF-8";
 
+/*
+  帮助菜单样式
+
+  对应模板：resources/help/index.html
+  主要用于指令菜单的卡片化展示与背景图层叠。
+*/
+
 :root {
   --c-bg: #0f1014;
   --c-accent: #ffe600;

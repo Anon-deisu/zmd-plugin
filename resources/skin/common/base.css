@@ -1,3 +1,8 @@
+/*
+  skin/common/base.css
+
+  皮肤资源库的基础字体类（通常由 less 编译生成）。
+*/
 .font-ys {
   font-family: Number, "汉仪文黑-65W", YS, PingFangSC-Medium, "PingFang SC", sans-serif;
 }

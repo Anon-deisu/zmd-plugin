@@ -1,3 +1,8 @@
+/**
+ * Skland API 地址常量。
+ *
+ * 单独拆出，避免 client.js 过长难读。
+ */
 export const MAIN_URL = "https://zonai.skland.com/"
 export const API_VERSION = "v1"
 

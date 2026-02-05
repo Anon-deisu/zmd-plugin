@@ -1,3 +1,11 @@
+/**
+ * Skland 公告模块。
+ *
+ * 提供：
+ * - 列表/详情抓取（优先 fetch，必要时用 puppeteer 兜底）
+ * - 进程内缓存（减少网络请求与渲染压力）
+ * - 群订阅 + 定时推送任务（Redis 持久化）
+ */
 import fetch from "node-fetch"
 import puppeteer from "puppeteer"
 
@@ -10,9 +18,11 @@ const SKLAND_ANN_DETAIL_URL = "https://zonai.skland.com/web/v1/item"
 const SKLAND_GAME_ID_ENDFIELD = 3
 const SKLAND_CATE_ID_ENDFIELD = 12
 
+// 保留历史 `Yz:EndUID:*` Key：避免老用户订阅/已读记录丢失。
 const KEY_ANN_SUB_GROUPS = "Yz:EndUID:Ann:SubGroups"
 const KEY_ANN_SEEN_IDS = "Yz:EndUID:Ann:SeenIds"
 
+// 进程内缓存（机器人重启后清空）。
 const memCache = {
   list: { ts: 0, data: [] },
   detail: new Map(),
@@ -125,6 +135,7 @@ async function fetchAnnDetailByFetch(postId) {
 }
 
 async function fetchAnnListByPuppeteer({ pageSize }) {
+  // puppeteer 兜底：用于处理偶发的反爬/跨域限制导致 fetch 无法直接拿到接口数据。
   const apiResponses = []
 
   const browser = await puppeteer.launch({
@@ -320,6 +331,7 @@ export async function setSeenAnnIds(ids) {
 let running = false
 export async function runAnnPushTask() {
   if (!cfg.ann?.enableTask) return
+  // 防止 cron 重入（网络慢或 puppeteer 兜底时，单次执行可能比较久）。
   if (running) return
   running = true
   try {

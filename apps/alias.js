@@ -1,3 +1,9 @@
+/**
+ * 别名指令入口。
+ *
+ * 负责解析聊天指令并调用 model/alias.js。
+ * 别名数据存储在 Redis（见 model/store.js）。
+ */
 import plugin from "../../../lib/plugins/plugin.js"
 
 import cfg from "../model/config.js"
