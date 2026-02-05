@@ -5,6 +5,10 @@ data/
 temp/
 *.log
 
+# Generated icon cache (do not commit)
+resources/endfield/itemiconbig/
+resources/endfield/charicon/
+
 # OS / editor
 .DS_Store
 Thumbs.db

@@ -10,6 +10,7 @@ import fetch from "node-fetch"
 import cfg from "../model/config.js"
 import { patchTempSessionReply } from "../model/reply.js"
 import { render as renderImg } from "../model/render.js"
+import { listLocalGachaRoleIds, updateWeaponIconCacheFromWiki } from "../model/gachaIconCache.js"
 import {
   deleteGachaLogsForUser,
   exportGachaLogsForUser,
@@ -21,6 +22,7 @@ import {
   updateGachaLogsForRoleId,
 } from "../model/gachalog.js"
 import { getQueryUserId } from "../model/mention.js"
+import { getActiveAccount, getUserData } from "../model/store.js"
 
 const GAME_TITLE = "[终末地]"
 
@@ -70,6 +72,7 @@ export class gachalog extends plugin {
       rule: [
         { reg: "^#?(?:终末地|zmd)抽卡帮助$", fnc: "help" },
         { reg: "^#?(?:终末地|zmd)抽卡工具$", fnc: "tool" },
+        { reg: "^#?(?:终末地|zmd)(?:更新武器图标|补全武器图标|更新抽卡图标|补全抽卡图标)(?:\\s*.*)?$", fnc: "updateWeaponIcons" },
         { reg: "^#?(?:终末地|zmd)导入抽卡记录(?:\\s*.*)?$", fnc: "importLogs" },
         { reg: "^#?(?:终末地|zmd)导出抽卡记录$", fnc: "exportLogs" },
         { reg: "^#?(?:终末地|zmd)删除抽卡记录$", fnc: "deleteLogs" },
@@ -104,6 +107,99 @@ export class gachalog extends plugin {
       return true
     }
     await e.reply(`${GAME_TITLE} 抽卡工具下载：${url}`, true)
+    return true
+  }
+
+  async updateWeaponIcons() {
+    const e = this.e
+    const msg = String(e.msg || "").trim()
+
+    const rawArg = msg
+      .replace(/^#?(?:终末地|zmd)(?:更新武器图标|补全武器图标|更新抽卡图标|补全抽卡图标)\s*/i, "")
+      .trim()
+
+    const force = /^(?:强制|force)\b/i.test(rawArg) || /\b(?:强制|force)\b/i.test(rawArg)
+    const arg = rawArg.replace(/\b(?:强制|force)\b/gi, "").trim()
+
+    let roleIds = []
+
+    if (/^(?:all|全部)$/i.test(arg)) {
+      if (!e.isMaster) {
+        await e.reply(`${GAME_TITLE} 仅主人可用：更新全部本地抽卡记录的武器图标`, true)
+        return true
+      }
+      roleIds = listLocalGachaRoleIds()
+      if (!roleIds.length) {
+        await e.reply(`${GAME_TITLE} 本地未发现抽卡记录文件（data/gachalog/*.json）`, true)
+        return true
+      }
+    } else if (/^\d{5,}$/.test(arg)) {
+      const rid = String(arg)
+      if (!e.isMaster) {
+        const data = await getUserData(e.user_id)
+        const accounts = Array.isArray(data?.accounts) ? data.accounts : []
+        const found = accounts.some(a => String(a?.uid || "").trim() === rid)
+        if (!found) {
+          await e.reply(`${GAME_TITLE} 仅支持更新自己已绑定 UID 的武器图标（或由主人执行）`, true)
+          return true
+        }
+      }
+      roleIds = [rid]
+    } else if (!arg) {
+      const { account } = await getActiveAccount(e.user_id)
+      const rid = String(account?.uid || "").trim()
+      if (!rid) {
+        await e.reply(`${GAME_TITLE} 未绑定账号，请先私聊 ${cfg.cmd?.prefix || "#zmd"}登录 / ${cfg.cmd?.prefix || "#zmd"}绑定`, true)
+        return true
+      }
+      roleIds = [rid]
+    } else {
+      const p = String(cfg.cmd?.prefix || "#zmd")
+      await e.reply(
+        [
+          `${GAME_TITLE} 用法：`,
+          `- ${p}更新武器图标`,
+          `- ${p}更新武器图标<UID>`,
+          e.isMaster ? `- ${p}更新武器图标 全部` : "",
+          `可选：加“强制”重下，例如：${p}更新武器图标 强制`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        true,
+      )
+      return true
+    }
+
+    const res = await updateWeaponIconCacheFromWiki({
+      roleIds,
+      force,
+      maxDownloads: e.isMaster && roleIds.length > 1 ? 2000 : 500,
+    })
+
+    if (!res?.ok) {
+      const reason = res?.message || "unknown"
+      const hint = reason === "wiki_list_unavailable" ? "（请先执行一次 #zmd武器列表，或稍后重试）" : ""
+      await e.reply(`${GAME_TITLE} 更新失败：${reason}${hint}`, true)
+      return true
+    }
+
+    const lines = [
+      `${GAME_TITLE} 武器图标缓存更新完成`,
+      roleIds.length > 1 ? `目标UID：${roleIds.length} 个（本地全部）` : `目标UID：${roleIds[0]}`,
+      `涉及武器：${res.wanted} 个`,
+      `已存在：${res.existed} 个`,
+      `计划下载：${res.planned} 个`,
+      `成功下载：${res.downloaded} 个`,
+      res.skippedByLimit ? `超出上限跳过：${res.skippedByLimit} 个（可重复执行分批补全）` : "",
+      res.notFound?.length ? `未在 wiki 列表中找到：${res.notFound.slice(0, 10).join(" / ")}${res.notFound.length > 10 ? " ..." : ""}` : "",
+      res.failed?.length ? `下载失败：${res.failed.slice(0, 10).join(" / ")}${res.failed.length > 10 ? " ..." : ""}` : "",
+      `缓存目录：resources/endfield/itemiconbig/（已加入 .gitignore，避免误提交）`,
+      `提示：重新执行 ${cfg.cmd?.prefix || "#zmd"}抽卡记录 即可看到图标`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+
+    await e.reply(lines, true)
     return true
   }
 

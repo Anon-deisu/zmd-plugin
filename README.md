@@ -111,7 +111,7 @@ pnpm add qrcode node-fetch
   - `#zmd导入抽卡记录 <u8_token/链接>` 或直接发送 JSON 文件
   - `#zmd导出抽卡记录`
   - `#zmd删除抽卡记录`
-- 其他：`#zmd抽卡帮助` / `#zmd抽卡工具`
+- 其他：`#zmd抽卡帮助` / `#zmd抽卡工具` / `#zmd更新武器图标`
 
 ### 公告
 
@@ -141,6 +141,7 @@ pnpm add qrcode node-fetch
   - `plugins/<插件目录>/data/gachalog/`：抽卡记录 JSON
   - `plugins/<插件目录>/data/wiki/`：wiki 列表/页面缓存
   - `temp/zmd-plugin/`：扫码二维码临时 PNG（渲染/排查用）
+  - `plugins/<插件目录>/resources/endfield/itemiconbig/`：抽卡武器图标缓存（可用 `#zmd更新武器图标` 补全）
 
 ## 常见问题
 
