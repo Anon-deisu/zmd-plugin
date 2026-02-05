@@ -107,6 +107,10 @@ export class card extends plugin {
       rule: [
         { reg: "^#?(?:终末地|zmd)(?:刷新|更新|刷新数据|刷新面板|upd)$", fnc: "refresh" },
         { reg: "^#?(?:终末地|zmd)(?:卡片|kp|card)(?:\\s*.*)?$", fnc: "card" },
+        // 新用法：#<角色名>面板
+        // 注意：TRSS 插件规则默认大小写敏感，因此需要同时排除 zmd/ZMD。
+        { reg: "^#(?!终末地|zmd|ZMD|更新|刷新|查询|卡片)([\\w\\u4e00-\\u9fa5·_\\-]{1,20})\\s*面板(?:\\s*.*)?$", fnc: "panel" },
+        // 兼容旧用法：#zmd面板 <角色名>
         { reg: "^#?(?:终末地|zmd)(?:面板|查询|mb)\\s*(.+)$", fnc: "panel" },
       ],
     })
@@ -249,9 +253,15 @@ export class card extends plugin {
     const e = this.e
     const uid = getQueryUserId(e)
     const msg = getMessageText(e, { stripAt: true })
-    const query = msg.replace(/^#?(?:终末地|zmd)(?:面板|查询|mb)\s*/i, "").trim()
+    // 同时支持两种触发方式：
+    // 1) #<角色名>面板（推荐）
+    // 2) #zmd面板 <角色名>（旧用法）
+    let query = ""
+    const direct = msg.match(/^#(?!终末地|zmd|ZMD|更新|刷新|查询|卡片)([\w\u4e00-\u9fa5·_\-]{1,20})\s*面板(?:\s*.*)?$/i)
+    if (direct?.[1]) query = String(direct[1]).trim()
+    if (!query) query = msg.replace(/^#?(?:终末地|zmd)(?:面板|查询|mb)\s*/i, "").trim()
     if (!query) {
-      await e.reply(`${GAME_TITLE} 用法：${cfg.cmd?.prefix || "#zmd"}面板 <角色>`, true)
+      await e.reply(`${GAME_TITLE} 用法：#角色名面板（推荐） 或 ${cfg.cmd?.prefix || "#zmd"}面板 <角色>`, true)
       return true
     }
 
