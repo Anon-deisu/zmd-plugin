@@ -474,14 +474,40 @@ export async function updateGachaLogsForRoleId(userId, roleId) {
   const rid = String(roleId ?? "").trim()
   if (!rid) return { ok: false, message: "[终末地] 请提供 UID，例如：#zmd更新抽卡记录1234567890" }
 
-  const data = await getUserData(userId)
-  const accounts = Array.isArray(data?.accounts) ? data.accounts : []
-  const account = accounts.find(a => String(a?.uid || "").trim() === rid)
-  if (!account?.cred) {
-    return { ok: false, message: `[终末地] 未在你的绑定账号中找到 UID:${rid}，请先私聊 #zmd登录 绑定该账号` }
-  }
+  // 优先使用调用者自己的绑定（若存在），避免跨用户读取/更新。
+  try {
+    const data = await getUserData(userId)
+    const accounts = Array.isArray(data?.accounts) ? data.accounts : []
+    const account = accounts.find(a => String(a?.uid || "").trim() === rid)
+    if (account?.cred) return await updateGachaLogsForAccount(userId, account)
+  } catch {}
 
-  return await updateGachaLogsForAccount(userId, account)
+  // 公共刷新：调用者未绑定该 UID 时，尝试使用“已绑定该 UID 的用户”来刷新。
+  // 注意：这不会把账号绑定到调用者，只是复用持有者的登录态来更新本地缓存文件。
+  try {
+    const owner = await findBoundUserByRoleId(rid)
+    const ownerId = String(owner?.userId || "").trim()
+    if (!ownerId) {
+      return {
+        ok: false,
+        message: `[终末地] 未找到 UID:${rid} 的绑定账号，无法自动更新。\n请让账号持有者私聊 #zmd登录 绑定后再试，或用 #zmd导入抽卡记录 手动导入。`,
+      }
+    }
+
+    const ownerData = await getUserData(ownerId)
+    const ownerAccounts = Array.isArray(ownerData?.accounts) ? ownerData.accounts : []
+    const ownerAccount = ownerAccounts.find(a => String(a?.uid || "").trim() === rid)
+    if (!ownerAccount?.cred) {
+      return {
+        ok: false,
+        message: `[终末地] UID:${rid} 已登记但缺少有效凭据，无法自动更新。\n请让账号持有者私聊 #zmd登录 重新绑定后再试。`,
+      }
+    }
+
+    return await updateGachaLogsForAccount(ownerId, ownerAccount)
+  } catch (err) {
+    return { ok: false, message: `[终末地] 刷新抽卡记录失败：${err?.message || err}` }
+  }
 }
 
 async function updateGachaLogsForAccount(userId, account) {
