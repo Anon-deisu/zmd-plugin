@@ -34,6 +34,7 @@ import {
   getUserInfo,
 } from "../model/skland/client.js"
 import { resolveSmSdkPath } from "../model/skland/deviceId.js"
+import { PLUGIN_ID, PLUGIN_RESOURCES_DIR, pluginResourcesRelPath } from "../model/pluginMeta.js"
 
 const GAME_TITLE = "[终末地]"
 
@@ -87,10 +88,10 @@ async function replyPrivate(e, msg) {
 
     if (e.reply && !isTempSession) return await e.reply(msg, false)
 
-    if (lastErr) logger.error("[enduid-yunzai] 私聊消息发送失败", lastErr)
+    if (lastErr) logger.error(`[${PLUGIN_ID}] 私聊消息发送失败`, lastErr)
     return false
   } catch (err) {
-    logger.error("[enduid-yunzai] 私聊消息发送失败", err)
+    logger.error(`[${PLUGIN_ID}] 私聊消息发送失败`, err)
     return false
   }
 }
@@ -148,16 +149,16 @@ function circleByRate(rawRate) {
 
 function pickStateBackdrop() {
   try {
-    const bgDir = path.join(process.cwd(), "plugins", "enduid-yunzai", "resources", "state", "img", "bg")
+    const bgDir = path.join(PLUGIN_RESOURCES_DIR, "state", "img", "bg")
     if (!fsSync.existsSync(bgDir)) throw new Error("missing_bg_dir")
     const files = fsSync
       .readdirSync(bgDir)
       .filter(f => /\.(png|jpe?g|webp)$/i.test(f))
       .filter(Boolean)
     const file = files[Math.floor(Math.random() * files.length)]
-    if (file) return `../../../../../plugins/enduid-yunzai/resources/state/img/bg/${file}`
+    if (file) return pluginResourcesRelPath(`state/img/bg/${file}`)
   } catch {}
-  return `../../../../../plugins/enduid-yunzai/resources/state/img/default_bg.jpg`
+  return pluginResourcesRelPath("state/img/default_bg.jpg")
 }
 
 function formatRecoveryTime({ maxTs, currentTs, staminaCur, staminaTotal }) {
@@ -327,7 +328,7 @@ async function runAutoSignAll() {
       try {
         await Bot.pickFriend(notify).sendMsg([`${GAME_TITLE} 自动签到结果：`, ...results].join("\n"))
       } catch (err) {
-        logger.error("[enduid-yunzai] 自动签到推送失败", err)
+        logger.error(`[${PLUGIN_ID}] 自动签到推送失败`, err)
       }
     }
   } finally {
@@ -339,7 +340,7 @@ export class enduid extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-yunzai",
+      name: PLUGIN_ID,
       dsc: "终末地（Skland）查询/签到/登录",
       event: "message",
       priority: 5000,
@@ -359,7 +360,7 @@ export class enduid extends plugin {
         { reg: "^#?(?:终末地|zmd)(?:环境|env)$", fnc: "env" },
       ],
       task: {
-        name: "EndUID自动签到",
+        name: `${PLUGIN_ID}自动签到`,
         cron: String(cfg.autoSign?.cron || "0 5 4 * * *"),
         fnc: runAutoSignAll,
       },
@@ -476,7 +477,7 @@ export class enduid extends plugin {
           time: `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`,
           sections,
           imgType: "png",
-          copyright: `${GAME_TITLE} enduid-yunzai`,
+          copyright: `${GAME_TITLE} ${PLUGIN_ID}`,
         },
         { scale: 1.2, quality: 100 },
       )
@@ -957,7 +958,7 @@ export class enduid extends plugin {
       const actCur = safeInt(daily.dailyActivation)
       const actTotal = safeInt(daily.maxDailyActivation)
 
-      const resPath = rel => `../../../../../plugins/enduid-yunzai/resources/${rel}`
+      const resPath = rel => pluginResourcesRelPath(rel)
 
       const bgUrl = resPath("enduid/texture2d/end_daily_bg.png")
       const logoUrl = resPath("enduid/texture2d/end_daily_logo.png")

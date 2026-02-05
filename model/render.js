@@ -2,7 +2,7 @@ import path from "node:path"
 
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 
-const PLUGIN_NAME = "enduid-yunzai"
+import { PLUGIN_ID, PLUGIN_RESOURCES_DIR, pluginResourcesRelPath } from "./pluginMeta.js"
 
 function scaleAttr(pct = 1) {
   const n = Number(pct)
@@ -15,19 +15,19 @@ export async function render(tplPath, params = {}, { scale = 1, quality = 100 } 
   const [app, tpl] = String(tplPath || "").split("/")
   if (!app || !tpl) throw new Error(`Invalid tplPath: ${tplPath}`)
 
-  const layoutDir = path.join(process.cwd(), "plugins", PLUGIN_NAME, "resources", "common", "layout")
+  const layoutDir = path.join(PLUGIN_RESOURCES_DIR, "common", "layout")
   const defaultLayout = path.join(layoutDir, "default.html")
   const miaoLayout = path.join(layoutDir, "miao.html")
-  // name = `${PLUGIN_NAME}/${app}/${tpl}` -> temp/html/<plugin>/<app>/<tpl>/... (5层目录)
-  const resPath = `../../../../../plugins/${PLUGIN_NAME}/resources/`
+  // name = `${PLUGIN_ID}/${app}/${tpl}` -> temp/html/<plugin>/<app>/<tpl>/... (5层目录)
+  const resPath = pluginResourcesRelPath("")
 
   const imgType = String(params.imgType || "").trim()
 
   const data = {
     ...params,
-    _plugin: PLUGIN_NAME,
+    _plugin: PLUGIN_ID,
     saveId: params.saveId || params.save_id || tpl,
-    tplFile: `./plugins/${PLUGIN_NAME}/resources/${app}/${tpl}.html`,
+    tplFile: path.join(PLUGIN_RESOURCES_DIR, app, `${tpl}.html`),
     _res_path: resPath,
     defaultLayout,
     miaoLayout,
@@ -36,11 +36,11 @@ export async function render(tplPath, params = {}, { scale = 1, quality = 100 } 
     },
     sys: {
       scale: scaleAttr(scale),
-      copyright: params.copyright || `Created By EndUID-Yunzai`,
+      copyright: params.copyright || `Created By ${PLUGIN_ID}`,
     },
     quality,
     imgType: imgType || undefined,
   }
 
-  return await puppeteer.screenshot(`${PLUGIN_NAME}/${app}/${tpl}`, data)
+  return await puppeteer.screenshot(`${PLUGIN_ID}/${app}/${tpl}`, data)
 }

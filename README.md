@@ -1,4 +1,4 @@
-# zmd-plugin（enduid-yunzai / TRSS-Yunzai）
+# zmd-plugin（TRSS-Yunzai）
 
 终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件
 powered by chatgpt
@@ -23,19 +23,19 @@ powered by chatgpt
 在 TRSS-Yunzai 根目录执行：
 
 ```bash
-git clone https://github.com/Anon-deisu/zmd-plugin plugins/enduid-yunzai
+git clone https://github.com/Anon-deisu/zmd-plugin plugins/zmd-plugin
 ```
 
 后续更新：
 
 ```bash
-cd plugins/enduid-yunzai
+cd plugins/zmd-plugin
 git pull
 ```
 
 ### 方式二：手动安装
 
-1) 下载/解压本仓库到 TRSS-Yunzai 的 `plugins/` 下并命名为 `enduid-yunzai`
+1) 下载/解压本仓库到 TRSS-Yunzai 的 `plugins/` 下并命名为 `zmd-plugin`
 2) 在 TRSS-Yunzai 根目录安装依赖（如已安装可忽略）：
 
 ```bash
@@ -46,7 +46,7 @@ pnpm add qrcode
 
 ## 配置
 
-首次加载会自动生成：`config/enduid-yunzai.yaml`
+首次加载会自动生成：`config/zmd-plugin.yaml`
 
 常用配置：
 

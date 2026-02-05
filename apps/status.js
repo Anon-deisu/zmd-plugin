@@ -19,7 +19,7 @@ export class status extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-status",
+      name: "zmd-plugin-status",
       dsc: "终末地状态/更新日志",
       event: "message",
       priority: 5000,

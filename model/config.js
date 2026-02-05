@@ -1,4 +1,25 @@
+import fsSync from "node:fs"
+import fs from "node:fs/promises"
+
+import YAML from "yaml"
+
 import makeConfig from "../../../lib/plugins/config.js"
+
+import { LEGACY_CONFIG_ID, PLUGIN_ID } from "./pluginMeta.js"
+
+function mergeDeep(target, source) {
+  const s = source && typeof source === "object" ? source : null
+  if (!s) return target
+  for (const [k, v] of Object.entries(s)) {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      if (!target[k] || typeof target[k] !== "object" || Array.isArray(target[k])) target[k] = {}
+      mergeDeep(target[k], v)
+    } else {
+      target[k] = v
+    }
+  }
+  return target
+}
 
 const DEFAULT_CONFIG = {
   cmd: {
@@ -57,7 +78,19 @@ const DEFAULT_CONFIG = {
   },
 }
 
-const { config, configSave } = await makeConfig("enduid-yunzai", DEFAULT_CONFIG)
+// Migration: if user already has config/enduid-yunzai.yaml, merge it into the new config.
+const baseConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG))
+try {
+  const newCfgFile = `config/${PLUGIN_ID}.yaml`
+  const oldCfgFile = `config/${LEGACY_CONFIG_ID}.yaml`
+  if (!fsSync.existsSync(newCfgFile) && fsSync.existsSync(oldCfgFile)) {
+    const raw = await fs.readFile(oldCfgFile, "utf8")
+    const parsed = YAML.parse(raw)
+    if (parsed && typeof parsed === "object") mergeDeep(baseConfig, parsed)
+  }
+} catch {}
+
+const { config, configSave } = await makeConfig(PLUGIN_ID, baseConfig)
 
 // 兼容旧配置：之前提示前缀可能是 #end，但现在命令已改为 #zmd / #终末地
 try {

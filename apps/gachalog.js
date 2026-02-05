@@ -57,7 +57,7 @@ export class gachalog extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-gachalog",
+      name: "zmd-plugin-gachalog",
       dsc: "终末地抽卡记录",
       event: "message",
       priority: 5000,
@@ -94,7 +94,7 @@ export class gachalog extends plugin {
     const e = this.e
     const url = String(cfg.gacha?.toolUrl || "").trim()
     if (!url) {
-      await e.reply(`${GAME_TITLE} 未配置抽卡工具下载链接（管理员可在 config/enduid-yunzai.yaml 设置 gacha.toolUrl）`, true)
+      await e.reply(`${GAME_TITLE} 未配置抽卡工具下载链接（管理员可在 config/zmd-plugin.yaml 设置 gacha.toolUrl）`, true)
       return true
     }
     await e.reply(`${GAME_TITLE} 抽卡工具下载：${url}`, true)
@@ -164,7 +164,7 @@ export class gachalog extends plugin {
           title: `${GAME_TITLE} 抽卡记录`,
           subtitle,
           imgType: "png",
-          copyright: `${GAME_TITLE} enduid-yunzai`,
+          copyright: `${GAME_TITLE} zmd-plugin`,
         },
         { scale: 1, quality: 100 },
       )

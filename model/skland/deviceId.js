@@ -92,7 +92,7 @@ function execNodeGetDid({ smsdkPath, env, timeoutMs }) {
 export async function getDeviceId({ userAgent, acceptLanguage, referer, platform } = {}) {
   const smsdkPath = resolveSmSdkPath()
   if (!smsdkPath) {
-    throw new Error("sm.sdk.js not found: 请在 config/enduid-yunzai.yaml 配置 smsdk.smSdkPath")
+    throw new Error("sm.sdk.js not found: 请在 config/zmd-plugin.yaml 配置 smsdk.smSdkPath")
   }
   if (!exists(runnerPath)) throw new Error(`smsdk runner missing: ${runnerPath}`)
 

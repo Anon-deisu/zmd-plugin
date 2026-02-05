@@ -53,7 +53,7 @@ export class strategy extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-yunzai-strategy",
+      name: "zmd-plugin-strategy",
       dsc: "终末地攻略查询与资源管理",
       event: "message",
       priority: 4990,
@@ -91,7 +91,7 @@ export class strategy extends plugin {
       const content = fs.readFileSync(this.indexFile, "utf-8")
       return safeJsonParse(content, { strategies: [] }) || { strategies: [] }
     } catch (err) {
-      logger.warn("[enduid-yunzai][strategy] 读取 index.json 失败", err)
+      logger.warn("[zmd-plugin][strategy] 读取 index.json 失败", err)
       return { strategies: [] }
     }
   }
@@ -323,7 +323,7 @@ export class strategy extends plugin {
         forwardMessages.push(["正在从 GitHub 下载 index.json…"])
         indexData = await this.downloadFromGitHub(GITHUB_REPO, "index.json")
       } catch (err) {
-        logger.error("[enduid-yunzai][strategy] GitHub 下载 index.json 失败", err)
+        logger.error("[zmd-plugin][strategy] GitHub 下载 index.json 失败", err)
         forwardMessages.push([`GitHub 下载失败：${err?.message || err}`])
         await e.reply(common.makeForwardMsg(e, forwardMessages, "攻略资源"))
         return true
@@ -407,7 +407,7 @@ export class strategy extends plugin {
       await e.reply(common.makeForwardMsg(e, forwardMessages, title))
       return true
     } catch (err) {
-      logger.error("[enduid-yunzai][strategy] 资源处理失败", err)
+      logger.error("[zmd-plugin][strategy] 资源处理失败", err)
       forwardMessages.push([`处理失败：${err?.message || err}`])
       await e.reply(common.makeForwardMsg(e, forwardMessages, "攻略资源"))
       return true
@@ -468,7 +468,7 @@ export class strategy extends plugin {
           }
         }
       } catch (err) {
-        logger.warn("[enduid-yunzai][strategy] 提取消息图片失败", err)
+        logger.warn("[zmd-plugin][strategy] 提取消息图片失败", err)
       }
     }
 
@@ -693,7 +693,7 @@ export class strategy extends plugin {
       try {
         if (fs.existsSync(normalized)) fs.unlinkSync(normalized)
       } catch (err) {
-        logger.warn("[enduid-yunzai][strategy] 删除图片失败", err)
+        logger.warn("[zmd-plugin][strategy] 删除图片失败", err)
       }
     }
 
@@ -739,7 +739,7 @@ export class strategy extends plugin {
       const author = authors.length ? authors.join("、") : "未知作者"
       return { author, title }
     } catch (err) {
-      logger.warn("[enduid-yunzai][strategy] 获取作者/标题失败", err)
+      logger.warn("[zmd-plugin][strategy] 获取作者/标题失败", err)
       return { author: "未知作者", title: "" }
     }
   }

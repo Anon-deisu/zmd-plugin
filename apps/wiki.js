@@ -61,7 +61,7 @@ export class wiki extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-yunzai-wiki",
+      name: "zmd-plugin-wiki",
       dsc: "终末地图鉴（biligame wiki）",
       event: "message",
       priority: 5000,

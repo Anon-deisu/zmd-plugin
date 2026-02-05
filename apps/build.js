@@ -36,7 +36,7 @@ export class build extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-build",
+      name: "zmd-plugin-build",
       dsc: "终末地基建/飞船",
       event: "message",
       priority: 5000,
@@ -164,7 +164,7 @@ export class build extends plugin {
           time: currentTs ? formatYmdHm(currentTs) : "",
           rooms: roomsView,
           domains: domainsView,
-          copyright: `${GAME_TITLE} enduid-yunzai`,
+          copyright: `${GAME_TITLE} zmd-plugin`,
         },
         { scale: 1, quality: 100 },
       )

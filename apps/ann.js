@@ -27,7 +27,7 @@ export class ann extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-ann",
+      name: "zmd-plugin-ann",
       dsc: "终末地公告",
       event: "message",
       priority: 5000,
@@ -39,7 +39,7 @@ export class ann extends plugin {
         { reg: "^#?(?:终末地|zmd)(?:清理公告缓存|公告清理缓存)$", fnc: "clearCache", permission: "master" },
       ],
       task: {
-        name: "EndUID公告推送",
+        name: "zmd-plugin公告推送",
         cron: String(cfg.ann?.cron || "0 */15 * * * *"),
         fnc: runAnnPushTask,
       },

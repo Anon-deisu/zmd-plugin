@@ -205,7 +205,7 @@ export async function fetchAnnList({ pageSize = 18, useCache = true } = {}) {
     try {
       list = await fetchAnnListByPuppeteer({ pageSize: size })
     } catch (err) {
-      logger?.warn?.("[enduid-yunzai] 公告 puppeteer 获取失败", err)
+      logger?.warn?.("[zmd-plugin] 公告 puppeteer 获取失败", err)
     }
   }
 
@@ -223,7 +223,7 @@ export async function fetchAnnDetail(postId, { useCache = true } = {}) {
     try {
       data = await fetchAnnDetailByPuppeteer(id)
     } catch (err) {
-      logger?.warn?.("[enduid-yunzai] 公告详情 puppeteer 获取失败", err)
+      logger?.warn?.("[zmd-plugin] 公告详情 puppeteer 获取失败", err)
     }
   }
 
@@ -357,7 +357,7 @@ export async function runAnnPushTask() {
       try {
         await Bot.pickGroup(String(gid)).sendMsg(lines)
       } catch (err) {
-        logger?.warn?.("[enduid-yunzai] 公告推送失败", gid, err)
+        logger?.warn?.("[zmd-plugin] 公告推送失败", gid, err)
       }
     }
   } finally {

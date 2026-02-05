@@ -15,9 +15,10 @@ import {
 } from "./store.js"
 import { OAUTH_API } from "./skland/api.js"
 
-const PLUGIN_NAME = "enduid-yunzai"
-const DATA_DIR = path.join(process.cwd(), "plugins", PLUGIN_NAME, "data", "gachalog")
-const RES_DIR = path.join(process.cwd(), "plugins", PLUGIN_NAME, "resources")
+import { PLUGIN_DATA_DIR, PLUGIN_RESOURCES_DIR } from "./pluginMeta.js"
+
+const DATA_DIR = path.join(PLUGIN_DATA_DIR, "gachalog")
+const RES_DIR = PLUGIN_RESOURCES_DIR
 
 const BINDING_APP_CODE = "be36d44aa36bfb5b"
 const BINDING_LIST_URL = "https://binding-api-account-prod.hypergryph.com/account/binding/v1/binding_list"
@@ -31,6 +32,11 @@ const CHARACTER_POOL_TYPES = [
   "E_CharacterGachaPoolType_Beginner",
   "E_CharacterGachaPoolType_Standard",
 ]
+
+const KEY_USERS = "Yz:EndUID:Users"
+const ROLE_OWNER_TTL_MS = 10 * 60 * 1000
+const ROLE_OWNER_NEGATIVE_TTL_MS = 60 * 1000
+const roleOwnerCache = new Map()
 
 const running = new Set()
 
@@ -113,6 +119,66 @@ function getQqAvatarUrl(userId) {
   const id = String(userId ?? "").trim()
   if (!id) return ""
   return `https://q.qlogo.cn/headimg_dl?dst_uin=${encodeURIComponent(id)}&spec=640`
+}
+
+function getCachedRoleOwner(roleId) {
+  const rid = String(roleId ?? "").trim()
+  if (!rid) return null
+
+  const cached = roleOwnerCache.get(rid)
+  if (!cached) return null
+  if ((cached.expiresAt || 0) > Date.now()) return cached
+
+  roleOwnerCache.delete(rid)
+  return null
+}
+
+function setCachedRoleOwner(roleId, { userId = "", nickname = "" } = {}) {
+  const rid = String(roleId ?? "").trim()
+  if (!rid) return
+
+  const uid = String(userId ?? "").trim()
+  const ttl = uid ? ROLE_OWNER_TTL_MS : ROLE_OWNER_NEGATIVE_TTL_MS
+  roleOwnerCache.set(rid, {
+    userId: uid,
+    nickname: String(nickname ?? "").trim(),
+    expiresAt: Date.now() + ttl,
+  })
+}
+
+async function findBoundUserByRoleId(roleId) {
+  const rid = String(roleId ?? "").trim()
+  if (!rid) return { userId: "", nickname: "" }
+
+  const cached = getCachedRoleOwner(rid)
+  if (cached) return { userId: cached.userId, nickname: cached.nickname }
+
+  let userIds = []
+  try {
+    userIds = await redis.sMembers(KEY_USERS)
+  } catch {
+    setCachedRoleOwner(rid, {})
+    return { userId: "", nickname: "" }
+  }
+
+  for (const uidRaw of userIds) {
+    const uid = String(uidRaw ?? "").trim()
+    if (!uid) continue
+    try {
+      const data = await getUserData(uid)
+      const accounts = Array.isArray(data?.accounts) ? data.accounts : []
+      const found = accounts.find(a => String(a?.uid || "").trim() === rid)
+      if (!found) continue
+
+      const nickname = String(found?.nickname || "").trim()
+      const res = { userId: uid, nickname }
+      setCachedRoleOwner(rid, res)
+      return res
+    } catch {}
+  }
+
+  setCachedRoleOwner(rid, {})
+  return { userId: "", nickname: "" }
 }
 
 function formatYmdRangeFromMs(items) {
@@ -535,6 +601,8 @@ export async function getGachaLogViewForRoleId(roleId, { userId, account, allowU
   if (!rid) return { ok: false, message: "[终末地] 请提供 UID，例如：#zmd抽卡记录1234567890" }
 
   let accountHint = null
+  let callerHasRole = false
+  let ownerNickname = ""
   const callerId = String(userId ?? "").trim()
 
   if (callerId) {
@@ -542,7 +610,10 @@ export async function getGachaLogViewForRoleId(roleId, { userId, account, allowU
       const data = await getUserData(callerId)
       const accounts = Array.isArray(data?.accounts) ? data.accounts : []
       const found = accounts.find(a => String(a?.uid || "").trim() === rid)
-      if (found && typeof found === "object") accountHint = { ...found }
+      if (found && typeof found === "object") {
+        accountHint = { ...found }
+        callerHasRole = true
+      }
       else if (!allowUnbound) {
         return {
           ok: false,
@@ -559,6 +630,18 @@ export async function getGachaLogViewForRoleId(roleId, { userId, account, allowU
     }
   } else if (!allowUnbound) {
     return { ok: false, message: "[终末地] 无法确认 UID 归属，请改用：#zmd抽卡记录 或 #zmd抽卡记录 @用户" }
+  }
+
+  let faceUserId = callerHasRole ? callerId : ""
+  if (!callerHasRole && allowUnbound) {
+    try {
+      const { userId: boundUserId, nickname } = await findBoundUserByRoleId(rid)
+      if (boundUserId) {
+        faceUserId = boundUserId
+        ownerNickname = String(nickname || "").trim()
+        if (!accountHint && ownerNickname) accountHint = { uid: rid, nickname: ownerNickname }
+      }
+    } catch {}
   }
 
   const exportData = await loadGachaExport(rid)
@@ -579,16 +662,18 @@ export async function getGachaLogViewForRoleId(roleId, { userId, account, allowU
   const finalAccount = {
     ...merged,
     uid: String(merged?.uid || rid),
-    nickname: String(merged?.nickname || `UID:${rid}`),
+    nickname: String(merged?.nickname || ownerNickname || `UID:${rid}`),
   }
 
-  return await buildGachaLogView({ userId, roleId: rid, account: finalAccount, exportData })
+  return await buildGachaLogView({ userId, roleId: rid, account: finalAccount, exportData, faceUserId })
 }
 
-async function buildGachaLogView({ userId, roleId, account, exportData }) {
+async function buildGachaLogView({ userId, roleId, account, exportData, faceUserId }) {
   const charList = Array.isArray(exportData?.charList) ? exportData.charList : []
   const weaponList = Array.isArray(exportData?.weaponList) ? exportData.weaponList : []
   const totalPulls = charList.length + weaponList.length
+
+  const avatarUserId = faceUserId != null ? faceUserId : userId
 
   // 6 星“实际花费抽数”：从上一次 6 星（不含）到本次 6 星（含）的抽数（含免费抽）
   const charSixCost = buildSixCostByPoolId(charList, { excludeFree: false })
@@ -747,8 +832,8 @@ async function buildGachaLogView({ userId, roleId, account, exportData }) {
     exportTime,
     face: {
       banner: "miao/common/bg/bg-sr.webp",
-      face: getQqAvatarUrl(userId),
-      qFace: getQqAvatarUrl(userId),
+      face: getQqAvatarUrl(avatarUserId),
+      qFace: getQqAvatarUrl(avatarUserId),
       name: String(account.nickname || "未命名"),
     },
     gacha: {
@@ -859,7 +944,7 @@ export async function exportGachaLogsForUser(userId) {
     ok: true,
     roleId,
     filePath,
-    fileName: `EndUID_gacha_${roleId}.json`,
+    fileName: `zmd_gacha_${roleId}.json`,
   }
 }
 

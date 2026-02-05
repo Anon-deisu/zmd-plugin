@@ -1,6 +1,8 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
+import { PLUGIN_ID } from "./pluginMeta.js"
+
 function uniqueName(prefix, ext) {
   const rand = Math.random().toString(16).slice(2)
   return `${prefix}_${Date.now()}_${rand}.${ext}`
@@ -20,10 +22,10 @@ async function getQrLib() {
 }
 
 export async function makeQrPng(text) {
-  const tmpDir = path.join(process.cwd(), "temp", "enduid-yunzai")
+  const tmpDir = path.join(process.cwd(), "temp", PLUGIN_ID)
   await fs.mkdir(tmpDir, { recursive: true })
 
-  const outPath = path.join(tmpDir, uniqueName("enduid_qr", "png"))
+  const outPath = path.join(tmpDir, uniqueName("zmd_qr", "png"))
   const value = String(text || "").trim()
   if (!value) throw new Error("二维码内容为空")
 

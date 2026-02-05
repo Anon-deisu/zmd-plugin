@@ -10,7 +10,7 @@ export class alias extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-alias",
+      name: "zmd-plugin-alias",
       dsc: "终末地角色别名",
       event: "message",
       priority: 5000,

@@ -14,8 +14,9 @@ import {
   WIKI_HOME_URL,
 } from "./types.js"
 
-const PLUGIN_NAME = "enduid-yunzai"
-const DATA_DIR = path.join(process.cwd(), "plugins", PLUGIN_NAME, "data", "wiki")
+import { PLUGIN_DATA_DIR } from "../pluginMeta.js"
+
+const DATA_DIR = path.join(PLUGIN_DATA_DIR, "wiki")
 
 const LIST_JSON_PATH = path.join(DATA_DIR, LIST_CACHE_FILE)
 const CHAR_DIR = path.join(DATA_DIR, CHAR_CACHE_DIR)

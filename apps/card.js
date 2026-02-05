@@ -92,7 +92,7 @@ export class card extends plugin {
   constructor(e) {
     patchTempSessionReply(e)
     super({
-      name: "enduid-card",
+      name: "zmd-plugin-card",
       dsc: "终末地卡片/面板",
       event: "message",
       priority: 5000,
@@ -195,7 +195,7 @@ export class card extends plugin {
           chars: cardChars,
           time: currentTs ? formatYmdHm(currentTs) : "",
           subtitle: `${GAME_TITLE} 卡片`,
-          copyright: `${GAME_TITLE} enduid-yunzai`,
+          copyright: `${GAME_TITLE} zmd-plugin`,
         },
         { scale: 1, quality: 100 },
       )
@@ -419,7 +419,7 @@ export class card extends plugin {
           userAvatarUrl: String(base.avatarUrl || "").trim(),
           time: currentTs ? formatYmdHm(currentTs) : "",
           subtitle: `${GAME_TITLE} 面板`,
-          copyright: `${GAME_TITLE} enduid-yunzai`,
+          copyright: `${GAME_TITLE} zmd-plugin`,
         },
         { scale: 2, quality: 100 },
       )
