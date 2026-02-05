@@ -1,7 +1,6 @@
 # zmd-plugin（TRSS-Yunzai）
 
 终末地（Endfield）/ 森空岛（Skland）相关功能的 `TRSS-Yunzai` 插件
-powered by chatgpt
 
 ## 功能
 
