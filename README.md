@@ -29,7 +29,7 @@
 5) 常用查询：
    - `#zmd每日`
    - `#zmd卡片`
-   - `#<角色>面板`（例如 `#霜星面板`）
+   - `#<角色>面板`（例如 `#管理员面板`）
 6) 抽卡记录：`#zmd更新抽卡记录` -> `#zmd抽卡记录`
 
 ## 安装
@@ -126,7 +126,6 @@ pnpm add qrcode node-fetch
 - `#zmd卡池`（别名：`#zmd卡池信息` / `#zmdup角色`）
 - `#zmd<名称>图鉴`（后缀可用：`介绍/技能/天赋/潜能/专武/武器`）
 - `#zmd<名称>攻略`（查询攻略图）
-- `#zmd攻略资源下载` / `#zmd攻略资源更新`（管理员维护资源用）
 
 ### 签到 / 其他
 
@@ -140,19 +139,14 @@ pnpm add qrcode node-fetch
 
 - 账号绑定信息主要存储在 Redis；本插件目录会写入的本地文件（已在 `.gitignore` 排除）：
   - `plugins/<插件目录>/data/gachalog/`：抽卡记录 JSON
-  - `plugins/<插件目录>/data/strategyimg/`：攻略资源/用户上传
   - `plugins/<插件目录>/data/wiki/`：wiki 列表/页面缓存
   - `temp/zmd-plugin/`：扫码二维码临时 PNG（渲染/排查用）
 
 ## 常见问题
 
-1) 只回复文字、不出图
-   - 可能是 puppeteer/Chromium 环境未就绪；请先确认 TRSS 的渲染器可用，再重启机器人。
-2) 提示缺少依赖 `qrcode` / `node-fetch`
+1) 提示缺少依赖 `qrcode` / `node-fetch`
    - 在 TRSS-Yunzai 根目录执行：`pnpm add qrcode node-fetch`，然后重启。
-3) 群聊里命令不触发
-   - 可能启用了“只响应@/前缀”；请 @机器人 或使用机器人别名开头（TRSS 群配置相关）。
-4) `#<角色>面板` 与其他插件冲突
+2) `#<角色>面板` 与其他插件冲突
    - 仍可使用旧用法：`#zmd面板 <角色>`。
 
 ## 免责声明
