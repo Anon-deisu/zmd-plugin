@@ -84,8 +84,9 @@
 2) 暂存：`git add -A`
 3) 自动生成提交信息（提交名 + 小标题）：
    - 提交名（第一行，<= 50 字）：`<type>(<scope>): <一句话总结>`
-     - `type`：`feat` / `fix` / `refactor` / `docs` / `chore`
-     - `scope`：例如 `gachalog` / `wiki` / `login` / `resource` / `core`
+      - `type`：`feat` / `fix` / `refactor` / `docs` / `chore`
+      - `scope`：例如 `gachalog` / `wiki` / `login` / `resource` / `core`
+      - 标题（冒号后“一句话总结”）尽量使用中文，避免英文。
    - 小标题（第二段第一行）：`<scope>: <更具体说明>`
    - 需要时在正文补充要点（`-` 列表），避免长篇。
 4) 提交：`git commit -m "<提交名>" -m "<小标题>\n\n- ..."`
@@ -93,3 +94,38 @@
 
 注意：
 - 禁止提交任何 `data/` 下的用户数据（已由 `.gitignore` 排除）。
+- 不要提交 agent 文件（例如 `AGENTS.md`）。注意：就算 `.gitignore` 写了 `AGENTS.md`，如果它曾经被 git 跟踪（tracked），改动仍会被 `git add -A` 暂存。
+  - 最稳妥：只 add 需要的文件，避免 `git add -A`。
+    - 例：`git add -- README.md`
+    - 例：`git add -- apps model resources index.js package.json`
+  - 如果不小心 `git add -A` 了：用 `git restore --staged AGENTS.md`（或 `git reset AGENTS.md`）把它从暂存区移除，再 `git status` 复核。
+  - 仅本地生效的防误提方式：`git update-index --skip-worktree AGENTS.md`（恢复：`git update-index --no-skip-worktree AGENTS.md`）。
+
+### 实际提交流程（示例）
+
+在插件目录执行（不要在上级 TRSS-Yunzai 仓库里提交）：
+
+```bash
+cd C:\msys64\home\yuyu\TRSS_AllBot\TRSS-Yunzai\plugins\enduid-yunzai
+
+# 1) 确认仓库/分支/远端
+git rev-parse --show-toplevel
+git status -sb
+git remote -v
+
+# 2) 看清改动
+git diff
+
+# 3) 只暂存要提交的文件（避免把 AGENTS.md 等本地文件带上）
+# docs 示例：
+git add -- README.md
+
+# 4) 提交
+git commit -m "docs: 更新 README"
+
+# 5) 推送（已设置 upstream 时直接 git push 即可）
+git push
+
+# 可选：确认与远端是否同步
+git rev-list --left-right --count origin/main...main
+```

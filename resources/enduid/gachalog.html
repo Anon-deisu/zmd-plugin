@@ -1,8 +1,8 @@
-{{extend miaoLayout}}
+{{extend skinLayout}}
 
 {{block 'css'}}
-<link rel="stylesheet" type="text/css" href="{{_res_path}}miao/common/tpl.css?v=1.0"/>
-<link rel="stylesheet" type="text/css" href="{{_res_path}}miao/character/avatar-list.css"/>
+<link rel="stylesheet" type="text/css" href="{{_res_path}}skin/common/tpl.css?v=1.0"/>
+<link rel="stylesheet" type="text/css" href="{{_res_path}}skin/character/avatar-list.css"/>
 <style>
   .avatar-cont {
     background: rgba(0, 0, 0, 0.1);
@@ -186,7 +186,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: url("{{_res_path}}miao/common/item/bg5.png") 100% 100% no-repeat;
+    background: url("{{_res_path}}skin/common/item/bg5.png") 100% 100% no-repeat;
     background-size: cover;
   }
 
@@ -266,7 +266,7 @@
       {{if face?.qFace || face?.face}}
       <span style="background-image:url({{face?.qFace||face?.face}})"></span>
       {{else}}
-      <span style="background-image:url({{_res_path}}miao/common/face/what.jpg)"></span>
+      <span style="background-image:url({{_res_path}}skin/common/face/what.jpg)"></span>
       {{/if}}
     </div>
     <div class="user-info">

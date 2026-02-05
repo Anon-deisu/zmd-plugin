@@ -831,7 +831,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
     uid: roleId,
     exportTime,
     face: {
-      banner: "miao/common/bg/bg-sr.webp",
+      banner: "skin/common/bg/bg-sr.webp",
       face: getQqAvatarUrl(avatarUserId),
       qFace: getQqAvatarUrl(avatarUserId),
       name: String(account.nickname || "未命名"),

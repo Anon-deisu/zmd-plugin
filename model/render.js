@@ -17,7 +17,7 @@ export async function render(tplPath, params = {}, { scale = 1, quality = 100 } 
 
   const layoutDir = path.join(PLUGIN_RESOURCES_DIR, "common", "layout")
   const defaultLayout = path.join(layoutDir, "default.html")
-  const miaoLayout = path.join(layoutDir, "miao.html")
+  const skinLayout = path.join(layoutDir, "skin.html")
   // name = `${PLUGIN_ID}/${app}/${tpl}` -> temp/html/<plugin>/<app>/<tpl>/... (5层目录)
   const resPath = pluginResourcesRelPath("")
 
@@ -30,7 +30,7 @@ export async function render(tplPath, params = {}, { scale = 1, quality = 100 } 
     tplFile: path.join(PLUGIN_RESOURCES_DIR, app, `${tpl}.html`),
     _res_path: resPath,
     defaultLayout,
-    miaoLayout,
+    skinLayout,
     pageGotoParams: {
       waitUntil: "networkidle0",
     },
