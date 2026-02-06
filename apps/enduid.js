@@ -303,22 +303,22 @@ async function runAutoSignAll() {
       try {
         const res = await attendance(account.cred, account.uid)
         if (!res) {
-          await recordFail(1)
+          await recordFail(1, { uid: account.uid })
           return `${userId}: 请求失败`
         }
         if (res.code === 0) {
-          await recordSuccess(1)
+          await recordSuccess(1, { uid: account.uid })
           return `${userId}: ✅ ${account.nickname || account.uid}`
         }
         if (res.code === 10001) {
-          await recordSigned(1)
+          await recordSigned(1, { uid: account.uid })
           return `${userId}: ☑️ 已签 ${account.nickname || account.uid}`
         }
 
-        await recordFail(1)
+        await recordFail(1, { uid: account.uid })
         return `${userId}: ❌ ${account.nickname || account.uid} ${res.message || res.code}`
       } catch (err) {
-        await recordFail(1)
+        await recordFail(1, { uid: account.uid })
         return `${userId}: 异常 ${err?.message || err}`
       }
     }
@@ -814,16 +814,16 @@ export class enduid extends plugin {
     }
 
     if (res.code === 0) {
-      await recordSuccess(1)
+      await recordSuccess(1, { uid: account.uid })
       await e.reply(`${GAME_TITLE} ✅ [${account.nickname || account.uid}] 签到完成\n${formatAwards(res)}`, true)
       return true
     }
     if (res.code === 10001) {
-      await recordSigned(1)
+      await recordSigned(1, { uid: account.uid })
       await e.reply(`${GAME_TITLE} ☑️ [${account.nickname || account.uid}] 今日已签到`, true)
       return true
     }
-    await recordFail(1)
+    await recordFail(1, { uid: account.uid })
     await e.reply(`${GAME_TITLE} ❌ [${account.nickname || account.uid}] 签到失败：${res.message || res.code}`, true)
     return true
   }
@@ -865,22 +865,22 @@ export class enduid extends plugin {
         try {
           const res = await attendance(account.cred, account.uid)
           if (!res) {
-            await recordFail(1)
+            await recordFail(1, { uid: account.uid })
             return { status: "fail", message: `❌ ${label} 请求失败` }
           }
           if (res.code === 0) {
-            await recordSuccess(1)
+            await recordSuccess(1, { uid: account.uid })
             return { status: "success", message: `✅ ${label}` }
           }
           if (res.code === 10001) {
-            await recordSigned(1)
+            await recordSigned(1, { uid: account.uid })
             return { status: "signed", message: `☑️ 已签 ${label}` }
           }
 
-          await recordFail(1)
+          await recordFail(1, { uid: account.uid })
           return { status: "fail", message: `❌ ${label} ${res.message || res.code}` }
         } catch (err) {
-          await recordFail(1)
+          await recordFail(1, { uid: account.uid })
           return { status: "fail", message: `❌ ${label} 异常 ${err?.message || err}` }
         }
       }
