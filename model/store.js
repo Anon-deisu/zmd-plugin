@@ -20,14 +20,6 @@ const KEY_HG_DEVICE = userId => `Yz:EndUID:HgDevice:${userId}`
 const KEY_AUTOSIGN_USERS = "Yz:EndUID:AutoSignUsers"
 const KEY_USERS = "Yz:EndUID:Users"
 
-// 短期内 `#zmd状态` 可能被频繁触发；给绑定统计加一个短 TTL 缓存，避免每次全量扫描。
-const BOUND_STATS_CACHE_TTL_MS = 60 * 1000
-let boundStatsCache = { value: null, expiresAt: 0 }
-
-function invalidateBoundStatsCache() {
-  boundStatsCache = { value: null, expiresAt: 0 }
-}
-
 function safeJsonParse(text, fallback) {
   try {
     return JSON.parse(text)
@@ -235,8 +227,6 @@ export async function saveUserData(userId, data) {
     if (hasAccounts) await redis.sAdd(KEY_USERS, String(userId))
     else await redis.sRem(KEY_USERS, String(userId))
   } catch {}
-
-  invalidateBoundStatsCache()
 }
 
 export async function getActiveAccount(userId) {
@@ -382,46 +372,4 @@ export async function countBoundUsers() {
   } catch {
     return 0
   }
-}
-
-/**
- * 统计已绑定的游戏 UID 数量。
- *
- * - userCount: 当前有绑定账号的 QQ 用户数
- * - uidCount: 去重后的游戏 UID 数量（账号 uid 字段）
- * - accountCount: 账号条目总数（不去重）
- */
-export async function getBoundStats() {
-  if (boundStatsCache.value && boundStatsCache.expiresAt > Date.now()) return boundStatsCache.value
-
-  const userIds = await listBoundUsers()
-  const uids = new Set()
-  let accountCount = 0
-  let userCount = 0
-
-  for (const userId of userIds) {
-    try {
-      const data = await getUserData(userId)
-      const accounts = Array.isArray(data?.accounts) ? data.accounts : []
-      if (accounts.length) userCount += 1
-      accountCount += accounts.length
-      for (const a of accounts) {
-        const uid = String(a?.uid || "").trim()
-        if (uid) uids.add(uid)
-      }
-    } catch {}
-  }
-
-  const out = {
-    userCount,
-    uidCount: uids.size,
-    accountCount,
-  }
-
-  boundStatsCache = {
-    value: out,
-    expiresAt: Date.now() + BOUND_STATS_CACHE_TTL_MS,
-  }
-
-  return out
 }
