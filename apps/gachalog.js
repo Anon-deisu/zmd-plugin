@@ -52,10 +52,15 @@ function extractUrlLike(text) {
 
 function parseRoleIdFromCommand(msg, kind) {
   const text = normalizeText(msg)
-  const reg =
-    kind === "refresh"
-      ? /^#?(?:终末地|zmd)(?:刷新抽卡记录|更新抽卡记录|抽卡记录更新|全量更新抽卡记录|重刷抽卡记录|重置抽卡记录|重拉抽卡记录|重新获取抽卡记录|重新获取所有抽卡记录|重新获取全部抽卡记录)\s*([0-9]{5,})\b/i
-      : /^#?(?:终末地|zmd)(?:抽卡记录|抽卡纪录)\s*([0-9]{5,})\b/i
+  let reg = /^#?(?:终末地|zmd)(?:抽卡记录|抽卡纪录)\s*([0-9]{5,})\b/i
+  if (kind === "refresh") {
+    reg =
+      /^#?(?:终末地|zmd)(?:刷新抽卡记录|更新抽卡记录|抽卡记录更新|全量更新抽卡记录|重刷抽卡记录|重置抽卡记录|重拉抽卡记录|重新获取抽卡记录|重新获取所有抽卡记录|重新获取全部抽卡记录)\s*([0-9]{5,})\b/i
+  } else if (kind === "show_char") {
+    reg = /^#?(?:终末地|zmd)(?:角色抽卡记录|角色抽卡纪录)\s*([0-9]{5,})\b/i
+  } else if (kind === "show_weapon") {
+    reg = /^#?(?:终末地|zmd)(?:武器抽卡记录|武器抽卡纪录)\s*([0-9]{5,})\b/i
+  }
   const m = text.match(reg)
   const roleId = m?.[1] ? String(m[1]).trim() : ""
   return /^[0-9]{5,}$/.test(roleId) ? roleId : ""
@@ -108,6 +113,8 @@ export class gachalog extends plugin {
           fnc: "refreshAll",
         },
         { reg: "^#?(?:终末地|zmd)(?:刷新抽卡记录|更新抽卡记录|抽卡记录更新)(?:\\s*.*)?$", fnc: "refresh" },
+        { reg: "^#?(?:终末地|zmd)(?:角色抽卡记录|角色抽卡纪录)(?:\\s*.*)?$", fnc: "showChar" },
+        { reg: "^#?(?:终末地|zmd)(?:武器抽卡记录|武器抽卡纪录)(?:\\s*.*)?$", fnc: "showWeapon" },
         { reg: "^#?(?:终末地|zmd)(?:抽卡记录|抽卡纪录)(?:\\s*.*)?$", fnc: "show" },
       ],
     })
@@ -124,6 +131,8 @@ export class gachalog extends plugin {
       `4) 导入 JSON 文件：${p}导入抽卡记录（直接发送文件）`,
       ``,
       `查看：${p}抽卡记录 / ${p}抽卡记录1234567890 / ${p}抽卡记录 @用户`,
+      `角色：${p}角色抽卡记录 / ${p}角色抽卡记录1234567890 / ${p}角色抽卡记录 @用户`,
+      `武器：${p}武器抽卡记录 / ${p}武器抽卡记录1234567890 / ${p}武器抽卡记录 @用户`,
       `导出：${p}导出抽卡记录`,
       `删除：${p}删除抽卡记录`,
     ]
@@ -276,16 +285,28 @@ export class gachalog extends plugin {
   }
 
   async show() {
+    return this.showByKind({ poolKind: "all", title: `${GAME_TITLE} 抽卡记录`, roleKind: "show" })
+  }
+
+  async showChar() {
+    return this.showByKind({ poolKind: "char", title: `${GAME_TITLE} 角色抽卡记录`, roleKind: "show_char" })
+  }
+
+  async showWeapon() {
+    return this.showByKind({ poolKind: "weapon", title: `${GAME_TITLE} 武器抽卡记录`, roleKind: "show_weapon" })
+  }
+
+  async showByKind({ poolKind = "all", title = `${GAME_TITLE} 抽卡记录`, roleKind = "show" } = {}) {
     const e = this.e
     const queryUserId = getQueryUserId(e)
     const callerId = String(e.user_id ?? "")
     const targetId = String(queryUserId ?? "")
     const isOther = !!targetId && !!callerId && targetId !== callerId
 
-    const roleId = !isOther ? parseRoleIdFromCommand(e.msg, "show") : ""
+    const roleId = !isOther ? parseRoleIdFromCommand(e.msg, roleKind) : ""
     const res = roleId
-      ? await getGachaLogViewForRoleId(roleId, { userId: e.user_id, allowUnbound: true })
-      : await getGachaLogViewForUser(queryUserId)
+      ? await getGachaLogViewForRoleId(roleId, { userId: e.user_id, allowUnbound: true, poolKind })
+      : await getGachaLogViewForUser(queryUserId, { poolKind })
     if (!res.ok) {
       await e.reply(res.message, true)
       return true
@@ -300,7 +321,7 @@ export class gachalog extends plugin {
         {
           ...res.view,
           prefix: p,
-          title: `${GAME_TITLE} 抽卡记录`,
+          title,
           subtitle,
           imgType: "png",
           copyright: `${GAME_TITLE} zmd-plugin`,
@@ -312,7 +333,7 @@ export class gachalog extends plugin {
         return true
       }
     } catch (err) {
-      logger.error(`${GAME_TITLE} 抽卡记录图片渲染失败：${err?.message || err}`)
+      logger.error(`${title} 图片渲染失败：${err?.message || err}`)
     }
 
     await e.reply(res.text, true)

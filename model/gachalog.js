@@ -309,7 +309,7 @@ function buildPoolsByPoolId(items, { kind = "char", hasFree = true } = {}) {
       key: `${kind}:${poolId}`,
       kind,
       poolId,
-      title: kind === "weapon" ? `${baseTitle}（武器）` : baseTitle,
+      title: baseTitle,
       timeRange: formatYmdRangeFromMs(poolItems),
       pity: getPityFromRecent(poolItems, { excludeFree: false }),
       stats: buildPoolStats(poolItems, { hasFree }),
@@ -642,15 +642,27 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
   }
 }
 
-function buildTextSummary({ account, exportData, pools }) {
-  const total = (exportData?.charList?.length || 0) + (exportData?.weaponList?.length || 0)
-  const time = exportData?.info?.exportTimestamp ? formatYmdHmFromMs(exportData.info.exportTimestamp * 1000) : "-"
+function normalizePoolKind(poolKind) {
+  const kind = String(poolKind || "").trim().toLowerCase()
+  if (kind === "char" || kind === "role" || kind === "character") return "char"
+  if (kind === "weapon") return "weapon"
+  return "all"
+}
+
+function getSummaryTitle(poolKind) {
+  if (poolKind === "char") return "角色抽卡记录"
+  if (poolKind === "weapon") return "武器抽卡记录"
+  return "抽卡记录"
+}
+
+function buildTextSummary({ account, pools, exportTime = "-", totalPulls = 0, poolKind = "all" }) {
+  const title = getSummaryTitle(poolKind)
 
   const lines = [
-    `[终末地] 抽卡记录`,
+    `[终末地] ${title}`,
     `账号：${account?.nickname || "未命名"} UID:${account?.uid || "-"}`,
-    `更新：${time}`,
-    `总抽卡：${total}`,
+    `更新：${exportTime}`,
+    `总抽卡：${totalPulls}`,
   ]
 
   for (const p of pools) {
@@ -663,7 +675,7 @@ function buildTextSummary({ account, exportData, pools }) {
   return lines.join("\n")
 }
 
-export async function getGachaLogViewForUser(userId) {
+export async function getGachaLogViewForUser(userId, { poolKind } = {}) {
   const { account } = await getActiveAccount(userId)
   if (!account?.cred || !account?.uid) {
     return { ok: false, message: "[终末地] 未绑定账号，请先私聊 #zmd登录 / #zmd绑定" }
@@ -682,10 +694,10 @@ export async function getGachaLogViewForUser(userId) {
     }
   }
 
-  return await buildGachaLogView({ userId, roleId, account, exportData })
+  return await buildGachaLogView({ userId, roleId, account, exportData, poolKind })
 }
 
-export async function getGachaLogViewForRoleId(roleId, { userId, account, allowUnbound = false } = {}) {
+export async function getGachaLogViewForRoleId(roleId, { userId, account, allowUnbound = false, poolKind } = {}) {
   const rid = String(roleId ?? "").trim()
   if (!rid) return { ok: false, message: "[终末地] 请提供 UID，例如：#zmd抽卡记录1234567890" }
 
@@ -754,13 +766,12 @@ export async function getGachaLogViewForRoleId(roleId, { userId, account, allowU
     nickname: String(merged?.nickname || ownerNickname || `UID:${rid}`),
   }
 
-  return await buildGachaLogView({ userId, roleId: rid, account: finalAccount, exportData, faceUserId })
+  return await buildGachaLogView({ userId, roleId: rid, account: finalAccount, exportData, faceUserId, poolKind })
 }
 
-async function buildGachaLogView({ userId, roleId, account, exportData, faceUserId }) {
+async function buildGachaLogView({ userId, roleId, account, exportData, faceUserId, poolKind } = {}) {
   const charList = Array.isArray(exportData?.charList) ? exportData.charList : []
   const weaponList = Array.isArray(exportData?.weaponList) ? exportData.weaponList : []
-  const totalPulls = charList.length + weaponList.length
 
   const avatarUserId = faceUserId != null ? faceUserId : userId
 
@@ -813,12 +824,25 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
   // 按 poolId 拆分卡池（而不是“限定/常驻”大类聚合），避免新旧限定池互相混算。
   const charPools = buildPoolsByPoolId(charList, { kind: "char", hasFree: true })
   const weaponPools = buildPoolsByPoolId(weaponList, { kind: "weapon", hasFree: false })
-  const pools = [...charPools, ...weaponPools].sort((a, b) => {
+  const allPools = [...charPools, ...weaponPools].sort((a, b) => {
     if ((b.latestTs || 0) !== (a.latestTs || 0)) return (b.latestTs || 0) - (a.latestTs || 0)
     return String(a.title || "").localeCompare(String(b.title || ""), "zh-Hans-CN")
   })
 
-  const totalSix = charList.filter(i => safeInt(i?.rarity) === 6).length + weaponList.filter(i => safeInt(i?.rarity) === 6).length
+  const kind = normalizePoolKind(poolKind)
+  const showChar = kind === "all" || kind === "char"
+  const showWeapon = kind === "all" || kind === "weapon"
+
+  const pools = allPools.filter(p => (p.kind === "char" && showChar) || (p.kind === "weapon" && showWeapon))
+
+  const totalChar = showChar ? charList.length : 0
+  const totalWeapon = showWeapon ? weaponList.length : 0
+  const totalPulls = totalChar + totalWeapon
+
+  const totalCharSix = showChar ? charList.filter(i => safeInt(i?.rarity) === 6).length : 0
+  const totalWeaponSix = showWeapon ? weaponList.filter(i => safeInt(i?.rarity) === 6).length : 0
+  const totalSix = totalCharSix + totalWeaponSix
+
   const exportTime = exportData?.info?.exportTimestamp ? formatYmdHmFromMs(exportData.info.exportTimestamp * 1000) : "-"
 
   const poolsView = pools.map(p => {
@@ -893,14 +917,14 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
       stat: {
         totalNum: totalPulls,
         sixNum: totalSix,
-        charNum: charList.length,
-        weaponNum: weaponList.length,
+        charNum: showChar ? charList.length : null,
+        weaponNum: showWeapon ? weaponList.length : null,
       },
       pools: poolsView,
     },
   }
 
-  const text = buildTextSummary({ account, exportData, pools })
+  const text = buildTextSummary({ account, pools, exportTime, totalPulls, poolKind: kind })
 
   return { ok: true, account, exportData, view, text }
 
