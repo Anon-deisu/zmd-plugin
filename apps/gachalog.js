@@ -54,11 +54,38 @@ function parseRoleIdFromCommand(msg, kind) {
   const text = normalizeText(msg)
   const reg =
     kind === "refresh"
-      ? /^#?(?:终末地|zmd)(?:刷新抽卡记录|更新抽卡记录)\s*([0-9]{5,})\b/i
+      ? /^#?(?:终末地|zmd)(?:刷新抽卡记录|更新抽卡记录|抽卡记录更新|全量更新抽卡记录|重刷抽卡记录|重置抽卡记录|重拉抽卡记录|重新获取抽卡记录|重新获取所有抽卡记录|重新获取全部抽卡记录)\s*([0-9]{5,})\b/i
       : /^#?(?:终末地|zmd)(?:抽卡记录|抽卡纪录)\s*([0-9]{5,})\b/i
   const m = text.match(reg)
   const roleId = m?.[1] ? String(m[1]).trim() : ""
   return /^[0-9]{5,}$/.test(roleId) ? roleId : ""
+}
+
+function buildRefreshDoneLines({ res, isOther, targetId, full = false }) {
+  const isFull = full || String(res?.mode || "") === "full"
+  if (!isFull) {
+    return [
+      `${GAME_TITLE} 抽卡记录已更新！`,
+      isOther ? `目标：${targetId}` : "",
+      res.roleId ? `UID：${res.roleId}` : "",
+      `新增角色记录：${res.newCharCount} 条`,
+      `新增武器记录：${res.newWeaponCount} 条`,
+    ]
+  }
+
+  const deltaChar = Number(res?.deltaChar) || 0
+  const deltaWeapon = Number(res?.deltaWeapon) || 0
+  const dCharText = `${deltaChar >= 0 ? "+" : ""}${deltaChar}`
+  const dWeaponText = `${deltaWeapon >= 0 ? "+" : ""}${deltaWeapon}`
+
+  return [
+    `${GAME_TITLE} 抽卡记录全量重拉完成！`,
+    isOther ? `目标：${targetId}` : "",
+    res.roleId ? `UID：${res.roleId}` : "",
+    `角色记录：${res.totalChar} 条（变化 ${dCharText}）`,
+    `武器记录：${res.totalWeapon} 条（变化 ${dWeaponText}）`,
+    `提示：该指令会覆盖本地缓存，用于修复池子统计异常/历史记录错乱`,
+  ]
 }
 
 export class gachalog extends plugin {
@@ -76,8 +103,12 @@ export class gachalog extends plugin {
         { reg: "^#?(?:终末地|zmd)导入抽卡记录(?:\\s*.*)?$", fnc: "importLogs" },
         { reg: "^#?(?:终末地|zmd)导出抽卡记录$", fnc: "exportLogs" },
         { reg: "^#?(?:终末地|zmd)删除抽卡记录$", fnc: "deleteLogs" },
+        {
+          reg: "^#?(?:终末地|zmd)(?:全量更新抽卡记录|重刷抽卡记录|重置抽卡记录|重拉抽卡记录|重新获取抽卡记录|重新获取所有抽卡记录|重新获取全部抽卡记录)(?:\\s*.*)?$",
+          fnc: "refreshAll",
+        },
+        { reg: "^#?(?:终末地|zmd)(?:刷新抽卡记录|更新抽卡记录|抽卡记录更新)(?:\\s*.*)?$", fnc: "refresh" },
         { reg: "^#?(?:终末地|zmd)(?:抽卡记录|抽卡纪录)(?:\\s*.*)?$", fnc: "show" },
-        { reg: "^#?(?:终末地|zmd)(?:刷新抽卡记录|更新抽卡记录)(?:\\s*.*)?$", fnc: "refresh" },
       ],
     })
   }
@@ -87,9 +118,10 @@ export class gachalog extends plugin {
     const p = String(cfg.cmd?.prefix || "#zmd")
     const lines = [
       `${GAME_TITLE} 抽卡帮助`,
-      `1) 登录后刷新：${p}更新抽卡记录 / ${p}更新抽卡记录1234567890 / ${p}更新抽卡记录 @用户`,
-      `2) 导入 u8_token：${p}导入抽卡记录 <u8_token 或含 u8_token= 的链接>`,
-      `3) 导入 JSON 文件：${p}导入抽卡记录（直接发送文件）`,
+      `1) 登录后刷新：${p}更新抽卡记录 / ${p}抽卡记录更新 / ${p}更新抽卡记录1234567890 / ${p}更新抽卡记录 @用户`,
+      `2) 全量重拉：${p}全量更新抽卡记录 / ${p}全量更新抽卡记录1234567890（别名：${p}重新获取所有抽卡记录，会覆盖本地缓存）`,
+      `3) 导入 u8_token：${p}导入抽卡记录 <u8_token 或含 u8_token= 的链接>`,
+      `4) 导入 JSON 文件：${p}导入抽卡记录（直接发送文件）`,
       ``,
       `查看：${p}抽卡记录 / ${p}抽卡记录1234567890 / ${p}抽卡记录 @用户`,
       `导出：${p}导出抽卡记录`,
@@ -212,23 +244,34 @@ export class gachalog extends plugin {
 
     const roleId = !isOther ? parseRoleIdFromCommand(e.msg, "refresh") : ""
     const res = roleId
-      ? await updateGachaLogsForRoleId(e.user_id, roleId)
-      : await updateGachaLogsForUser(queryUserId)
+      ? await updateGachaLogsForRoleId(e.user_id, roleId, { full: false })
+      : await updateGachaLogsForUser(queryUserId, { full: false })
     if (!res.ok) {
       await e.reply(res.message, true)
       return true
     }
 
-    await e.reply(
-      [
-        `${GAME_TITLE} 抽卡记录已更新！`,
-        isOther ? `目标：${targetId}` : "",
-        res.roleId ? `UID：${res.roleId}` : "",
-        `新增角色记录：${res.newCharCount} 条`,
-        `新增武器记录：${res.newWeaponCount} 条`,
-      ].join("\n"),
-      true,
-    )
+    await e.reply(buildRefreshDoneLines({ res, isOther, targetId, full: false }).filter(Boolean).join("\n"), true)
+    return true
+  }
+
+  async refreshAll() {
+    const e = this.e
+    const queryUserId = getQueryUserId(e)
+    const callerId = String(e.user_id ?? "")
+    const targetId = String(queryUserId ?? "")
+    const isOther = !!targetId && !!callerId && targetId !== callerId
+
+    const roleId = !isOther ? parseRoleIdFromCommand(e.msg, "refresh") : ""
+    const res = roleId
+      ? await updateGachaLogsForRoleId(e.user_id, roleId, { full: true })
+      : await updateGachaLogsForUser(queryUserId, { full: true })
+    if (!res.ok) {
+      await e.reply(res.message, true)
+      return true
+    }
+
+    await e.reply(buildRefreshDoneLines({ res, isOther, targetId, full: true }).filter(Boolean).join("\n"), true)
     return true
   }
 

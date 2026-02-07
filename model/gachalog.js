@@ -242,22 +242,6 @@ function getPityFromRecent(items, { excludeFree = true } = {}) {
   return pity
 }
 
-function getPityByPoolId(items, { excludeFree = true } = {}) {
-  const by = new Map()
-  for (const item of items || []) {
-    const poolId = String(item?.poolId || "")
-    if (!poolId) continue
-    if (!by.has(poolId)) by.set(poolId, [])
-    by.get(poolId).push(item)
-  }
-
-  const out = {}
-  for (const [poolId, poolItems] of by.entries()) {
-    out[poolId] = getPityFromRecent(poolItems, { excludeFree })
-  }
-  return out
-}
-
 function buildPoolStats(items, { hasFree = false } = {}) {
   const total = Array.isArray(items) ? items.length : 0
   const six = (items || []).filter(i => safeInt(i?.rarity) === 6).length
@@ -298,6 +282,46 @@ function buildSixCostByPoolId(items, { excludeFree = true } = {}) {
   }
 
   return cost
+}
+
+function pickPoolName(poolItems, fallback = "") {
+  const sorted = (poolItems || []).slice().sort(sortTsSeqDesc)
+  for (const item of sorted) {
+    const name = String(item?.poolName || "").trim()
+    if (name) return name
+  }
+  return String(fallback || "").trim()
+}
+
+function buildPoolsByPoolId(items, { kind = "char", hasFree = true } = {}) {
+  const byPool = new Map()
+  for (const item of items || []) {
+    const poolId = String(item?.poolId || "").trim() || `${kind}_unknown`
+    if (!byPool.has(poolId)) byPool.set(poolId, [])
+    byPool.get(poolId).push(item)
+  }
+
+  const pools = []
+  for (const [poolId, poolItems] of byPool.entries()) {
+    const latestTs = Math.max(...poolItems.map(i => safeInt(i?.gachaTs, 0)))
+    const baseTitle = pickPoolName(poolItems, kind === "weapon" ? "武器寻访" : "角色寻访")
+    pools.push({
+      key: `${kind}:${poolId}`,
+      kind,
+      poolId,
+      title: kind === "weapon" ? `${baseTitle}（武器）` : baseTitle,
+      timeRange: formatYmdRangeFromMs(poolItems),
+      pity: getPityFromRecent(poolItems, { excludeFree: false }),
+      stats: buildPoolStats(poolItems, { hasFree }),
+      sixList: poolItems.filter(i => safeInt(i?.rarity) === 6).sort(sortTsSeqDesc).slice(0, 24),
+      latestTs,
+    })
+  }
+
+  return pools.sort((a, b) => {
+    if (b.latestTs !== a.latestTs) return b.latestTs - a.latestTs
+    return String(a.poolId || "").localeCompare(String(b.poolId || ""), "zh-Hans-CN")
+  })
 }
 
 function getLocalIconPath({ charId, weaponId } = {}) {
@@ -461,16 +485,16 @@ async function saveGachaExport(roleId, exportData) {
   return fp
 }
 
-export async function updateGachaLogsForUser(userId) {
+export async function updateGachaLogsForUser(userId, { full = false } = {}) {
   const { account } = await getActiveAccount(userId)
   if (!account?.cred || !account?.uid) {
     return { ok: false, message: "[终末地] 未绑定账号，请先私聊 #zmd登录 / #zmd绑定" }
   }
 
-  return await updateGachaLogsForAccount(userId, account)
+  return await updateGachaLogsForAccount(userId, account, { full })
 }
 
-export async function updateGachaLogsForRoleId(userId, roleId) {
+export async function updateGachaLogsForRoleId(userId, roleId, { full = false } = {}) {
   const rid = String(roleId ?? "").trim()
   if (!rid) return { ok: false, message: "[终末地] 请提供 UID，例如：#zmd更新抽卡记录1234567890" }
 
@@ -479,7 +503,7 @@ export async function updateGachaLogsForRoleId(userId, roleId) {
     const data = await getUserData(userId)
     const accounts = Array.isArray(data?.accounts) ? data.accounts : []
     const account = accounts.find(a => String(a?.uid || "").trim() === rid)
-    if (account?.cred) return await updateGachaLogsForAccount(userId, account)
+    if (account?.cred) return await updateGachaLogsForAccount(userId, account, { full })
   } catch {}
 
   // 公共刷新：调用者未绑定该 UID 时，尝试使用“已绑定该 UID 的用户”来刷新。
@@ -504,13 +528,13 @@ export async function updateGachaLogsForRoleId(userId, roleId) {
       }
     }
 
-    return await updateGachaLogsForAccount(ownerId, ownerAccount)
+    return await updateGachaLogsForAccount(ownerId, ownerAccount, { full })
   } catch (err) {
     return { ok: false, message: `[终末地] 刷新抽卡记录失败：${err?.message || err}` }
   }
 }
 
-async function updateGachaLogsForAccount(userId, account) {
+async function updateGachaLogsForAccount(userId, account, { full = false } = {}) {
   if (!account?.cred || !account?.uid) {
     return { ok: false, message: "[终末地] 未绑定账号，请先私聊 #zmd登录 / #zmd绑定" }
   }
@@ -534,8 +558,8 @@ async function updateGachaLogsForAccount(userId, account) {
     const existingChar = Array.isArray(existing?.charList) ? existing.charList : []
     const existingWeapon = Array.isArray(existing?.weaponList) ? existing.weaponList : []
 
-    const charMaxSeqId = getMaxSeqId(existingChar)
-    const weaponMaxSeqId = getMaxSeqId(existingWeapon)
+    const charMaxSeqId = full ? 0 : getMaxSeqId(existingChar)
+    const weaponMaxSeqId = full ? 0 : getMaxSeqId(existingWeapon)
 
     const { u8Token, recordUid: finalRecordUid } = await getU8Token({
       recordUid,
@@ -567,8 +591,20 @@ async function updateGachaLogsForAccount(userId, account) {
       existingMaxSeqId: weaponMaxSeqId,
     })
 
-    const { merged: mergedChar, newCount: newCharCount } = mergeRecords(existingChar, fetchedChar)
-    const { merged: mergedWeapon, newCount: newWeaponCount } = mergeRecords(existingWeapon, fetchedWeapon)
+    // 全量重拉时直接以接口返回为准覆盖本地；增量更新时只合并新增 seqId。
+    const baseChar = full ? [] : existingChar
+    const baseWeapon = full ? [] : existingWeapon
+    const { merged: mergedChar, newCount: mergedCharCount } = mergeRecords(baseChar, fetchedChar)
+    const { merged: mergedWeapon, newCount: mergedWeaponCount } = mergeRecords(baseWeapon, fetchedWeapon)
+
+    if (full && (existingChar.length > 0 || existingWeapon.length > 0) && !mergedChar.length && !mergedWeapon.length) {
+      return { ok: false, message: "[终末地] 全量重拉返回空数据，已取消覆盖本地记录（请稍后重试）" }
+    }
+
+    const newCharCount = full ? Math.max(0, mergedChar.length - existingChar.length) : mergedCharCount
+    const newWeaponCount = full ? Math.max(0, mergedWeapon.length - existingWeapon.length) : mergedWeaponCount
+    const deltaChar = mergedChar.length - existingChar.length
+    const deltaWeapon = mergedWeapon.length - existingWeapon.length
 
     const exportData = {
       info: {
@@ -586,10 +622,15 @@ async function updateGachaLogsForAccount(userId, account) {
 
     return {
       ok: true,
+      mode: full ? "full" : "incremental",
       roleId,
       filePath,
       newCharCount,
       newWeaponCount,
+      deltaChar,
+      deltaWeapon,
+      oldChar: existingChar.length,
+      oldWeapon: existingWeapon.length,
       totalChar: mergedChar.length,
       totalWeapon: mergedWeapon.length,
       exportTimestamp: exportData.info.exportTimestamp,
@@ -769,56 +810,20 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
     } catch {}
   }
 
-  const limitedItems = charList.filter(c => String(c?.poolId || "").startsWith("special_"))
-  const standardItems = charList.filter(c => String(c?.poolId || "") === "standard")
-  const beginnerItems = charList.filter(c => String(c?.poolId || "") === "beginner")
-
-  const pityByPool = getPityByPoolId(charList, { excludeFree: false })
-  const pityLimited = getPityFromRecent(limitedItems, { excludeFree: false })
-  const pityWeaponByPool = getPityByPoolId(weaponList, { excludeFree: false })
-  const pityWeaponDisplay = Math.max(0, ...Object.values(pityWeaponByPool).map(v => safeInt(v)))
-
-  const pools = [
-    {
-      key: "limited",
-      title: "限定寻访",
-      timeRange: formatYmdRangeFromMs(limitedItems),
-      pity: pityLimited,
-      stats: buildPoolStats(limitedItems, { hasFree: true }),
-      sixList: limitedItems.filter(i => safeInt(i?.rarity) === 6).sort(sortTsSeqDesc).slice(0, 24),
-    },
-    {
-      key: "weapon",
-      title: "武器寻访",
-      timeRange: formatYmdRangeFromMs(weaponList),
-      pity: pityWeaponDisplay,
-      stats: buildPoolStats(weaponList, { hasFree: false }),
-      sixList: weaponList.filter(i => safeInt(i?.rarity) === 6).sort(sortTsSeqDesc).slice(0, 24),
-    },
-    {
-      key: "standard",
-      title: "常驻寻访",
-      timeRange: formatYmdRangeFromMs(standardItems),
-      pity: safeInt(pityByPool.standard, 0),
-      stats: buildPoolStats(standardItems, { hasFree: true }),
-      sixList: standardItems.filter(i => safeInt(i?.rarity) === 6).sort(sortTsSeqDesc).slice(0, 24),
-    },
-    {
-      key: "beginner",
-      title: "新手寻访",
-      timeRange: formatYmdRangeFromMs(beginnerItems),
-      pity: safeInt(pityByPool.beginner, 0),
-      stats: buildPoolStats(beginnerItems, { hasFree: true }),
-      sixList: beginnerItems.filter(i => safeInt(i?.rarity) === 6).sort(sortTsSeqDesc).slice(0, 24),
-    },
-  ]
+  // 按 poolId 拆分卡池（而不是“限定/常驻”大类聚合），避免新旧限定池互相混算。
+  const charPools = buildPoolsByPoolId(charList, { kind: "char", hasFree: true })
+  const weaponPools = buildPoolsByPoolId(weaponList, { kind: "weapon", hasFree: false })
+  const pools = [...charPools, ...weaponPools].sort((a, b) => {
+    if ((b.latestTs || 0) !== (a.latestTs || 0)) return (b.latestTs || 0) - (a.latestTs || 0)
+    return String(a.title || "").localeCompare(String(b.title || ""), "zh-Hans-CN")
+  })
 
   const totalSix = charList.filter(i => safeInt(i?.rarity) === 6).length + weaponList.filter(i => safeInt(i?.rarity) === 6).length
   const exportTime = exportData?.info?.exportTimestamp ? formatYmdHmFromMs(exportData.info.exportTimestamp * 1000) : "-"
 
   const poolsView = pools.map(p => {
-    const max = p.key === "weapon" ? 80 : 90
-    const cost = p.key === "weapon" ? weaponSixCost : charSixCost
+    const max = p.kind === "weapon" ? 80 : 90
+    const cost = p.kind === "weapon" ? weaponSixCost : charSixCost
  
     const logs = (p.sixList || []).map(item => {
       const name = String(item?.charName || item?.weaponName || "未知")
