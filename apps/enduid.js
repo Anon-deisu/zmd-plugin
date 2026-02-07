@@ -11,6 +11,7 @@ import path from "node:path"
 import fsSync from "node:fs"
 
 import plugin from "../../../lib/plugins/plugin.js"
+import fetch from "node-fetch"
 
 import cfg from "../model/config.js"
 import { patchTempSessionReply } from "../model/reply.js"
@@ -43,6 +44,7 @@ import {
 } from "../model/skland/client.js"
 import { resolveSmSdkPath } from "../model/skland/deviceId.js"
 import { PLUGIN_ID, PLUGIN_RESOURCES_DIR, pluginResourcesRelPath } from "../model/pluginMeta.js"
+import { listSideBackgroundFiles, saveSideBackgroundImage } from "../model/sideBackground.js"
 
 const GAME_TITLE = "[终末地]"
 
@@ -120,6 +122,53 @@ function parseCredential(text) {
   if (raw.length === 32) return { kind: "cred", value: raw }
   if (raw.length === 24) return { kind: "token", value: raw }
   return { kind: "", value: raw }
+}
+
+function guessImageExt({ src = "", contentType = "" } = {}) {
+  const ct = String(contentType || "").toLowerCase()
+  if (ct.includes("image/png")) return ".png"
+  if (ct.includes("image/webp")) return ".webp"
+  if (ct.includes("image/bmp")) return ".bmp"
+  if (ct.includes("image/jpeg") || ct.includes("image/jpg")) return ".jpg"
+
+  const s = String(src || "").trim()
+  try {
+    const pathname = /^https?:\/\//i.test(s) ? new URL(s).pathname : s
+    const ext = path.extname(pathname || "").toLowerCase()
+    if ([".jpg", ".jpeg", ".png", ".webp", ".bmp"].includes(ext)) return ext === ".jpeg" ? ".jpg" : ext
+  } catch {}
+
+  return ".jpg"
+}
+
+function extractImageSourceFromEvent(e) {
+  const fromImg = Array.isArray(e?.img) && e.img.length ? String(e.img[0] || "").trim() : ""
+  if (fromImg) return fromImg
+
+  const seg = Array.isArray(e?.message)
+    ? e.message.find(m => m?.type === "image" || m?.type === "file")
+    : null
+  const fromSeg = String(seg?.url || seg?.file || seg?.path || "").trim()
+  return fromSeg || ""
+}
+
+async function readImageBufferFromSource(src) {
+  const raw = String(src || "").trim()
+  if (!raw) throw new Error("missing_image_source")
+
+  const local = raw.startsWith("file://") ? decodeURIComponent(raw.slice("file://".length)) : raw
+  const isLocalPath = /^[a-zA-Z]:[\\/]/.test(local) || local.startsWith("/") || local.startsWith("\\")
+
+  if (isLocalPath) {
+    const buffer = await fs.readFile(local)
+    return { buffer, extHint: guessImageExt({ src: local }) }
+  }
+
+  const resp = await fetch(raw)
+  if (!resp.ok) throw new Error(`download_failed_http_${resp.status}`)
+  const buffer = Buffer.from(await resp.arrayBuffer())
+  const extHint = guessImageExt({ src: raw, contentType: resp.headers.get("content-type") || "" })
+  return { buffer, extHint }
 }
 
 function safeInt(value, def = 0) {
@@ -366,6 +415,7 @@ export class enduid extends plugin {
         { reg: "^#?(?:终末地|zmd)(?:开启自动签到|自动签到开启)$", fnc: "autoSignOn" },
         { reg: "^#?(?:终末地|zmd)(?:关闭自动签到|自动签到关闭)$", fnc: "autoSignOff" },
         { reg: "^#?(?:终末地|zmd)(?:环境|env)$", fnc: "env" },
+        { reg: "^#?(?:终末地|zmd)(?:上传背景图|新增背景图)(?:\\s*.*)?$", fnc: "uploadBackground", permission: "master" },
       ],
       task: {
         name: `${PLUGIN_ID}自动签到`,
@@ -407,8 +457,8 @@ export class enduid extends plugin {
           { name: "公告", cmd: `${p}公告 / ${p}公告 <id>`, desc: "查看公告列表/详情" },
           {
             name: "抽卡记录",
-            cmd: `${p}记录 / ${p}记录<UID> / ${p}记录 @用户`,
-            desc: `兼容：${p}抽卡记录`,
+            cmd: `${p}抽卡记录 / ${p}抽卡记录<UID> / ${p}抽卡记录 @用户`,
+            desc: "查看抽卡记录",
           },
           {
             name: "角色抽卡记录",
@@ -481,6 +531,7 @@ export class enduid extends plugin {
           { name: "状态", cmd: `${p}状态`, desc: "" },
           { name: "更新日志", cmd: `${p}更新日志`, desc: "" },
           { name: "环境", cmd: `${p}环境`, desc: "诊断 smsdk/qrcode 依赖" },
+          { name: "上传背景图", cmd: `${p}上传背景图`, desc: "上传到本地图库（随机渲染背景）", badge: "MASTER" },
         ],
       },
     ]
@@ -545,7 +596,7 @@ export class enduid extends plugin {
       `- ${p}面板 @用户 <角色> / ${p}查询 @用户 <角色> / ${p}mb @用户 <角色>`,
       `- ${p}基建 / ${p}基建 @用户  （地区建设/飞船信息）`,
       `- ${p}公告 / ${p}公告 <id>`,
-      `- ${p}记录 / ${p}记录<UID> / ${p}记录 @用户  （查看抽卡记录，兼容 ${p}抽卡记录）`,
+      `- ${p}抽卡记录 / ${p}抽卡记录<UID> / ${p}抽卡记录 @用户  （查看抽卡记录）`,
       `- ${p}角色记录 / ${p}角色记录<UID> / ${p}角色记录 @用户  （只看角色池，兼容 ${p}角色抽卡记录）`,
       `- ${p}武器记录 / ${p}武器记录<UID> / ${p}武器记录 @用户  （只看武器池，兼容 ${p}武器抽卡记录）`,
       `- ${p}更新抽卡记录 / ${p}抽卡记录更新 / ${p}更新抽卡记录<UID> / ${p}更新抽卡记录 @用户  （刷新抽卡记录，可能耗时）`,
@@ -571,10 +622,56 @@ export class enduid extends plugin {
       ``,
       `【其他】`,
       `- ${p}状态 / ${p}更新日志 / ${p}环境`,
+      `- ${p}上传背景图  （仅 master，发送命令时附图）`,
     ].join("\n")
 
     await e.reply(msg, true)
     return true
+  }
+
+  async uploadBackground() {
+    const e = this.e
+    if (!e.isMaster) {
+      await e.reply(`${GAME_TITLE} 仅主人可用：上传背景图`, true)
+      return true
+    }
+
+    const src = extractImageSourceFromEvent(e)
+    if (!src) {
+      await e.reply(`${GAME_TITLE} 请发送命令并附带一张图片：#zmd上传背景图`, true)
+      return true
+    }
+
+    try {
+      const { buffer, extHint } = await readImageBufferFromSource(src)
+      const maxBytes = 20 * 1024 * 1024
+      if (!buffer?.length) throw new Error("empty_image")
+      if (buffer.length > maxBytes) throw new Error("image_too_large")
+
+      const saved = await saveSideBackgroundImage(buffer, { extHint })
+      const total = listSideBackgroundFiles().length
+
+      await e.reply(
+        [
+          `${GAME_TITLE} 背景图上传成功`,
+          `文件：${saved.fileName}`,
+          `图库：resources/side/（当前 ${total} 张）`,
+          `提示：新增图片已被 .gitignore 忽略，不会误提交到 GitHub`,
+        ].join("\n"),
+        true,
+      )
+      return true
+    } catch (err) {
+      const msg = String(err?.message || err)
+      const text =
+        msg === "image_too_large"
+          ? "图片过大（请小于 20MB）"
+          : msg.startsWith("download_failed_http_")
+            ? `下载图片失败（${msg.replace("download_failed_http_", "HTTP ")}）`
+            : `上传失败：${msg}`
+      await e.reply(`${GAME_TITLE} ${text}`, true)
+      return true
+    }
   }
 
   async env() {
@@ -1023,11 +1120,8 @@ export class enduid extends plugin {
         if (pick) pileUrl = pick
       } catch {}
 
-      const hasBg = !pileUrl
-      if (!pileUrl) pileUrl = bgUrl
-
       let avatarUrl = String(base.avatarUrl || "").trim()
-      if (!avatarUrl) avatarUrl = pileUrl
+      if (!avatarUrl) avatarUrl = getQqAvatarUrl(e.user_id)
       if (!avatarUrl) avatarUrl = resPath("state/img/default_avatar.jpg")
 
       const userName = String(base.name || account.nickname || "-").slice(0, 10)
@@ -1047,7 +1141,6 @@ export class enduid extends plugin {
       const img = await renderImg(
         "enduid/daily_pro",
         {
-          has_bg: hasBg,
           pile_url: pileUrl,
           bg_url: bgUrl,
           logo_url: logoUrl,

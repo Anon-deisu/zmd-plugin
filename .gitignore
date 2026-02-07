@@ -9,6 +9,10 @@ temp/
 resources/endfield/itemiconbig/
 resources/endfield/charicon/
 
+# Side background gallery uploads (keep base image only)
+resources/side/*
+!resources/side/61686c1cbfcfb586f1338525dccc90cf.jpg
+
 # OS / editor
 .DS_Store
 Thumbs.db

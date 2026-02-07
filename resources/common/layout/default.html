@@ -19,9 +19,48 @@
   <title>zmd-plugin</title>
   {{block 'css'}}
   {{/block}}
+  <style>
+    .zmd-side-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      background: #0f1117;
+    }
+
+    .zmd-side-bg::before {
+      content: "";
+      position: absolute;
+      inset: -28px;
+      background-image: var(--zmd-side-bg, none);
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      transform: scale(1.08);
+      filter: blur(20px) saturate(120%) brightness(0.72);
+      opacity: 0;
+    }
+
+    .zmd-side-bg.has-image::before {
+      opacity: 1;
+    }
+
+    .zmd-side-bg::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(160deg, rgba(8, 12, 20, 0.42), rgba(8, 10, 14, 0.88));
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+    }
+  </style>
 </head>
 
-<body class="elem-{{element||elem||`hydro`}} {{displayMode || mode || `default`}}-mode  {{bodyClass}}" {{@sys.scale}}>
+<body class="elem-{{element||elem||`hydro`}} {{displayMode || mode || `default`}}-mode {{if bgImage}}has-side-bg{{/if}} {{bodyClass}}" {{@sys.scale}}>
+  <div class="zmd-side-bg{{if bgImage}} has-image{{/if}}" {{if bgImage}}style="--zmd-side-bg:url('{{_res_path}}{{bgImage}}');"{{/if}}></div>
   <div class="container" id="container">
     {{block 'main'}}{{/block}}
     <div class="copyright">{{@sys.copyright}}</div>

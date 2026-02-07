@@ -10,6 +10,7 @@ import path from "node:path"
 import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 
 import { PLUGIN_ID, PLUGIN_RESOURCES_DIR, pluginResourcesRelPath } from "./pluginMeta.js"
+import { pickRandomSideBackgroundRel } from "./sideBackground.js"
 
 function scaleAttr(pct = 1) {
   const n = Number(pct)
@@ -30,9 +31,11 @@ export async function render(tplPath, params = {}, { scale = 1, quality = 100 } 
   const resPath = pluginResourcesRelPath("")
 
   const imgType = String(params.imgType || "").trim()
+  const bgImage = pickRandomSideBackgroundRel()
 
   const data = {
     ...params,
+    bgImage,
     _plugin: PLUGIN_ID,
     saveId: params.saveId || params.save_id || tpl,
     // 绝对文件路径：puppeteer 渲染器会读取该模板文件。

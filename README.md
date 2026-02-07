@@ -104,7 +104,7 @@ pnpm add qrcode node-fetch
   - `#zmd更新抽卡记录 @用户` / `#zmd抽卡记录更新 @用户`（更新被 @ 用户的当前账号记录）
   - `#zmd全量更新抽卡记录` / `#zmd全量更新抽卡记录<UID>` / `#zmd全量更新抽卡记录 @用户`（全量重拉并覆盖本地缓存；别名：`#zmd重新获取所有抽卡记录`）
 - 查看：
-  - `#zmd记录` / `#zmd记录<UID>` / `#zmd记录 @用户`（查询全部；兼容 `#zmd抽卡记录`）
+  - `#zmd抽卡记录` / `#zmd抽卡记录<UID>` / `#zmd抽卡记录 @用户`（查询全部）
   - `#zmd角色记录` / `#zmd角色记录<UID>` / `#zmd角色记录 @用户`（只看角色池；兼容 `#zmd角色抽卡记录`）
   - `#zmd武器记录` / `#zmd武器记录<UID>` / `#zmd武器记录 @用户`（只看武器池；兼容 `#zmd武器抽卡记录`）
 - 导入/导出/删除：
@@ -133,6 +133,7 @@ pnpm add qrcode node-fetch
 - `#zmd全部签到`（仅 master）
 - `#zmd状态` / `#zmd更新日志`
 - `#zmd环境`（诊断 smsdk/qrcode 等依赖）
+- `#zmd上传背景图`（仅 master，发送命令时附图）
 
 ## 数据与隐私
 
@@ -141,6 +142,7 @@ pnpm add qrcode node-fetch
   - `plugins/<插件目录>/data/wiki/`：wiki 列表/页面缓存
   - `temp/zmd-plugin/`：扫码二维码临时 PNG（渲染/排查用）
   - `plugins/<插件目录>/resources/endfield/itemiconbig/`：抽卡武器图标缓存（可用 `#zmd更新武器图标` 补全）
+  - `plugins/<插件目录>/resources/side/`：渲染背景图库（保留基础图；后续上传图默认不提交）
 
 ## 常见问题
 
