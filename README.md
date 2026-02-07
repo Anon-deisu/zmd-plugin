@@ -142,7 +142,7 @@ pnpm add qrcode node-fetch
   - `plugins/<插件目录>/data/wiki/`：wiki 列表/页面缓存
   - `temp/zmd-plugin/`：扫码二维码临时 PNG（渲染/排查用）
   - `plugins/<插件目录>/resources/endfield/itemiconbig/`：抽卡武器图标缓存（可用 `#zmd更新武器图标` 补全）
-  - `plugins/<插件目录>/resources/side/`：渲染背景图库（保留基础图；后续上传图默认不提交）
+  - `plugins/<插件目录>/resources/side/`：渲染背景图库（可用 `#zmd上传背景图` 增加背景图）
 
 ## 常见问题
 

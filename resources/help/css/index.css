@@ -12,7 +12,7 @@
   --c-accent: #ffe600;
   --c-text: #ffffff;
   --c-subtext: rgba(255, 255, 255, 0.72);
-  --c-panel: rgba(16, 17, 20, 0.72);
+  --c-panel: rgba(12, 14, 20, 0.84);
   --c-border: rgba(255, 255, 255, 0.18);
 }
 
@@ -56,7 +56,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 70% 35%, rgba(0, 0, 0, 0.0) 0%, rgba(0, 0, 0, 0.5) 55%, rgba(0, 0, 0, 0.78) 100%);
+  background: radial-gradient(circle at 70% 35%, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.62) 55%, rgba(0, 0, 0, 0.84) 100%);
   pointer-events: none;
 }
 
@@ -178,7 +178,7 @@ body {
   align-items: flex-start;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.28);
+  background: rgba(0, 0, 0, 0.44);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
   padding: 10px 12px;
   overflow: hidden;

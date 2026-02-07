@@ -11,7 +11,9 @@
 <link rel="stylesheet" type="text/css" href="{{_res_path}}skin/character/avatar-list.css"/>
 <style>
   .avatar-cont {
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(8, 10, 16, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    backdrop-filter: blur(6px);
   }
 
   /* 修复 user-banner 右侧末尾“露边/方角”问题：裁剪内部元素溢出 + banner 全覆盖 */
@@ -54,7 +56,8 @@
 
   .enduid-gachalog .gacha-list {
     padding: 10px;
-    background: rgba(0, 0, 0, 0.35);
+    background: rgba(0, 0, 0, 0.52);
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
   }
 
   .enduid-gachalog .pool-title {
@@ -75,11 +78,12 @@
     font-weight: 700;
     color: #d3bc8e;
     line-height: 22px;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
   }
 
   .enduid-gachalog .pool-name .time {
     font-size: 12px;
-    color: #aaa;
+    color: rgba(255, 255, 255, 0.82);
     line-height: 14px;
   }
 
@@ -225,15 +229,20 @@
     line-height: 26px;
     margin: 6px 0;
     padding-left: 6px;
-    overflow: hidden;
+    padding-right: 8px;
+    overflow: visible;
     white-space: nowrap;
-    text-overflow: ellipsis;
+    text-overflow: clip;
+    display: flex;
+    align-items: center;
+    min-width: 46px;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.28);
   }
 
   .enduid-gachalog .process .bar.gold {
     background: #ffeb73;
     color: #6f4b00;
-    min-width: 18px;
+    min-width: 46px;
   }
 
   .enduid-gachalog .process .bar.good {

@@ -55,15 +55,27 @@
       height: 100%;
       z-index: 0;
       background: #111;
+      overflow: hidden;
     }
 
     .bg-image {
+      position: absolute;
+      inset: 0;
       width: 100%;
       height: 100%;
+    }
+
+    .bg-image-cover {
       object-fit: cover;
       opacity: 0.62;
       transform: scale(1.08);
       filter: blur(14px) grayscale(18%) contrast(108%) brightness(0.78) saturate(118%);
+    }
+
+    .bg-image-fit {
+      object-fit: contain;
+      opacity: 0.28;
+      filter: saturate(115%) contrast(106%) brightness(0.86);
     }
 
     .grid-deco {
@@ -83,7 +95,9 @@
     .overlay-gradient {
       position: absolute;
       inset: 0;
-      background: radial-gradient(circle at 70% 40%, transparent 0%, rgba(15, 16, 20, 0.6) 40%, rgba(15, 16, 20, 0.98) 90%);
+      background:
+        linear-gradient(165deg, rgba(10, 12, 18, 0.56), rgba(10, 12, 18, 0.9)),
+        radial-gradient(circle at 70% 40%, rgba(15, 16, 20, 0.22) 0%, rgba(15, 16, 20, 0.66) 42%, rgba(15, 16, 20, 0.99) 90%);
       z-index: 1;
     }
 
@@ -425,11 +439,14 @@
 
     <div class="bg-layer">
       {{if bgImage}}
-      <img src="{{_res_path}}{{bgImage}}" class="bg-image">
+      <img src="{{_res_path}}{{bgImage}}" class="bg-image bg-image-cover">
+      <img src="{{_res_path}}{{bgImage}}" class="bg-image bg-image-fit">
       {{else if bg_url}}
-      <img src="{{bg_url}}" class="bg-image">
+      <img src="{{bg_url}}" class="bg-image bg-image-cover">
+      <img src="{{bg_url}}" class="bg-image bg-image-fit">
       {{else}}
-      <img src="{{pile_url}}" class="bg-image">
+      <img src="{{pile_url}}" class="bg-image bg-image-cover">
+      <img src="{{pile_url}}" class="bg-image bg-image-fit">
       {{/if}}
     </div>
 
