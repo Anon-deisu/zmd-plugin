@@ -172,7 +172,7 @@ export class build extends plugin {
           domains: domainsView,
           copyright: `${GAME_TITLE} zmd-plugin`,
         },
-        { scale: 1, quality: 100 },
+        { scale: 1.2, quality: 100 },
       )
 
       if (img) {

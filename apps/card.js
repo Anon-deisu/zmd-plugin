@@ -209,7 +209,7 @@ export class card extends plugin {
           subtitle: `${GAME_TITLE} 卡片`,
           copyright: `${GAME_TITLE} zmd-plugin`,
         },
-        { scale: 1, quality: 100 },
+        { scale: 1.2, quality: 100 },
       )
       if (img) {
         await e.reply(img, true)

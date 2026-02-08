@@ -17,7 +17,7 @@
 
 ## 兼容性（须知）
 
-此插件主要在 `TRSS-Yunzai + NapCat OneBotv11` 环境下自用验证，其余适配器/协议请自行测试与排查。
+此插件主要在 `TRSS-Yunzai + NapCat OneBotv11` 环境下完成验证；其他适配器/协议建议自行测试，欢迎反馈兼容性问题。
 
 ## 快速开始
 
@@ -92,7 +92,7 @@ pnpm add qrcode node-fetch
 
 - `#zmd每日` / `#zmd每日 @用户`
 - `#zmd卡片` / `#zmd卡片 @用户`
-- `#<角色>面板` / `#<角色>面板 @用户`（推荐，例如 `#霜星面板`）
+- `#<角色>面板` / `#<角色>面板 @用户`（推荐，例如 `#管理员面板`）
 - `#zmd面板 <角色>`（旧用法，仍支持；别名：`#zmd查询` / `#zmdmb`）
 - `#zmd基建`（别名：`#zmd建设` / `#zmd地区建设` / `#zmdjj`；可加参数 `详细`）
 
@@ -137,7 +137,7 @@ pnpm add qrcode node-fetch
 
 ## 数据与隐私
 
-- 账号绑定信息主要存储在 Redis；本插件目录会写入的本地文件（已在 `.gitignore` 排除）：
+- 账号绑定信息主要存储在 Redis；本插件目录会写入的本地文件：
   - `plugins/<插件目录>/data/gachalog/`：抽卡记录 JSON
   - `plugins/<插件目录>/data/wiki/`：wiki 列表/页面缓存
   - `temp/zmd-plugin/`：扫码二维码临时 PNG（渲染/排查用）

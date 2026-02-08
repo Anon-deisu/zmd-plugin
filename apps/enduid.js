@@ -1173,7 +1173,7 @@ export class enduid extends plugin {
             color: COLOR_GREEN,
           },
         },
-        { scale: 1, quality: 90 },
+        { scale: 1.2, quality: 100 },
       )
 
       if (img) {
