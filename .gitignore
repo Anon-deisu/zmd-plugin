@@ -21,3 +21,7 @@ Thumbs.db
 
 # Agent instructions (local only)
 AGENTS.md
+
+# Local friend api samples / scripts (DO NOT COMMIT)
+friend*.txt
+char_advanced_report*.py

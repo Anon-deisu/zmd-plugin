@@ -170,7 +170,7 @@ export class build extends plugin {
           time: currentTs ? formatYmdHm(currentTs) : "",
           rooms: roomsView,
           domains: domainsView,
-          copyright: `${GAME_TITLE} zmd-plugin`,
+          copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
         },
         { scale: 1.2, quality: 100 },
       )

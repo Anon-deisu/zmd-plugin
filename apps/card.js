@@ -13,6 +13,9 @@ import { patchTempSessionReply } from "../model/reply.js"
 import { render as renderImg } from "../model/render.js"
 import { getCardDetailForUser } from "../model/card.js"
 import { resolveAliasEntry } from "../model/alias.js"
+import { buildPanelStatsFromFriendPanel, getFriendCharComputed, getFriendCharComputedByRoleId, getFriendDetail } from "../model/friendApi.js"
+import { getActiveAccount } from "../model/store.js"
+import { pluginResourcesRelPath } from "../model/pluginMeta.js"
 import { getMessageText, getQueryUserId } from "../model/mention.js"
 
 const GAME_TITLE = "[终末地]"
@@ -207,7 +210,7 @@ export class card extends plugin {
           chars: cardChars,
           time: currentTs ? formatYmdHm(currentTs) : "",
           subtitle: `${GAME_TITLE} 卡片`,
-          copyright: `${GAME_TITLE} zmd-plugin`,
+          copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
         },
         { scale: 1.2, quality: 100 },
       )
@@ -265,6 +268,349 @@ export class card extends plugin {
       return true
     }
 
+    // Resolve aliases first so UID-only binding can also reuse the keyword.
+    let resolved = null
+    try {
+      resolved = await resolveAliasEntry(query)
+    } catch {}
+    const resolvedId = String(resolved?.entry?.id || "").trim()
+    const resolvedName = String(resolved?.entry?.name || resolved?.key || "").trim()
+
+    // UID-only binding: use Friend API to render panel without Skland login.
+    try {
+      const { account } = await getActiveAccount(uid)
+      if (account?.uidOnly && account?.uid && !account?.cred) {
+        const friendEnabled = cfg.friendApi?.enable !== false && cfg.friendApi?.baseUrl
+        if (!friendEnabled) {
+          await e.reply(`${GAME_TITLE} 未配置 friendApi，无法使用 UID 绑定面板功能`, true)
+          return true
+        }
+
+        const uidForFriend = String(account.uid || "").trim()
+        if (!uidForFriend) {
+          await e.reply(`${GAME_TITLE} 未绑定 UID，请先 ${cfg.cmd?.prefix || "#zmd"}绑定<UID>`, true)
+          return true
+        }
+
+        const detail = await getFriendDetail({ uidOrRoleId: uidForFriend })
+        if (!detail?.ok) {
+          await e.reply(`${GAME_TITLE} 获取角色列表失败：${detail?.message || "unknown"}`, true)
+          return true
+        }
+
+        const roleId = String(detail.roleId || "").trim()
+        const profile = detail.profile && typeof detail.profile === "object" ? detail.profile : {}
+        const charList = Array.isArray(detail.chars) ? detail.chars : []
+        if (!roleId || !charList.length) {
+          await e.reply(`${GAME_TITLE} 未找到可展示角色（Friend API 仅返回名片展示位）`, true)
+          return true
+        }
+
+        const normalizeKey = raw =>
+          String(raw || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^0-9a-z\u4e00-\u9fff]+/gi, "")
+
+        const normalizeTemplateId = raw => {
+          const s = String(raw || "").trim()
+          if (!s) return ""
+          let m = s.match(/(?:chr|char)_(\d{1,4})_([a-z0-9]+)/i)
+          if (!m) m = s.match(/^(\d{1,4})_([a-z0-9]+)$/i)
+          if (!m?.[1] || !m?.[2]) return ""
+          const num = String(m[1]).padStart(4, "0")
+          const code = String(m[2]).toLowerCase()
+          return `chr_${num}_${code}`
+        }
+
+        // 1) Prefer explicit template_id in message.
+        let templateId = ""
+        {
+          const m1 = msg.match(/((?:chr|char)_\d{1,4}_[a-z0-9]+)/i)
+          const m2 = msg.match(/(?:^|\s)(\d{1,4}_[a-z0-9]+)(?=\s|$)/i)
+          templateId = normalizeTemplateId(m1?.[1] || m2?.[1] || "")
+        }
+
+        // 2) Match by visible character list.
+        if (!templateId) {
+          const q = normalizeKey(resolvedName || query)
+          const exact = []
+          const fuzzy = []
+          for (const c of charList) {
+            const tid = String(c?.template_id || "").trim().toLowerCase()
+            if (!tid) continue
+            const nameCn = String(c?.template?.name_cn || "").trim()
+            const name = String(c?.template?.name || "").trim()
+            const code = tid.replace(/^chr_\d{4}_/i, "")
+            const keys = [normalizeKey(nameCn), normalizeKey(name), normalizeKey(tid), normalizeKey(code)].filter(Boolean)
+            if (!keys.length) continue
+            if (keys.some(k => k === q)) exact.push(tid)
+            else if (keys.some(k => k.includes(q) || q.includes(k))) fuzzy.push(tid)
+          }
+
+          const uniq = list => Array.from(new Set(list))
+          const exactU = uniq(exact)
+          const fuzzyU = uniq(fuzzy)
+          if (exactU.length === 1) templateId = exactU[0]
+          else if (fuzzyU.length === 1) templateId = fuzzyU[0]
+          else if (exactU.length > 1 || fuzzyU.length > 1) {
+            const tids = exactU.length ? exactU : fuzzyU
+            const names = tids
+              .map(tid => {
+                const c = charList.find(x => String(x?.template_id || "").trim().toLowerCase() === tid)
+                const n1 = String(c?.template?.name_cn || "").trim()
+                const n2 = String(c?.template?.name || "").trim()
+                return n1 || n2 || tid
+              })
+              .filter(Boolean)
+              .slice(0, 8)
+            await e.reply(`${GAME_TITLE} 匹配到多个角色：${names.join(" / ")}\n请使用模板ID，例如：${cfg.cmd?.prefix || "#zmd"}面板 ${tids[0]}`, true)
+            return true
+          }
+        }
+
+        if (!templateId) {
+          const list = charList
+            .map(c => String(c?.template?.name_cn || c?.template?.name || c?.template_id || "").trim())
+            .filter(Boolean)
+            .slice(0, 8)
+          await e.reply(
+            `${GAME_TITLE} 未找到角色「${query}」\n可展示角色：${list.join(" / ") || "-"}\n提示：Friend API 仅返回名片展示位，可用模板ID查询，例如：${cfg.cmd?.prefix || "#zmd"}面板 chr_0005_chen`,
+            true,
+          )
+          return true
+        }
+
+        const computed = await getFriendCharComputedByRoleId({ roleId, templateId })
+        if (!computed?.ok || !computed.panel) {
+          await e.reply(`${GAME_TITLE} 获取角色面板失败：${computed?.message || "unknown"}`, true)
+          return true
+        }
+
+        const placeholder = "———"
+
+        const stats = [
+          { key: "hp", title: "生命", value: placeholder, base: "", plus: "" },
+          { key: "atk", title: "攻击", value: placeholder, base: "", plus: "" },
+          { key: "def", title: "防御", value: placeholder, base: "", plus: "" },
+          { key: "speed", title: "敏捷", value: placeholder, base: "", plus: "" },
+          { key: "str", title: "力量", value: placeholder, base: "", plus: "" },
+          { key: "wis", title: "智识", value: placeholder, base: "", plus: "" },
+          { key: "will", title: "意志", value: placeholder, base: "", plus: "" },
+          { key: "cpct", title: "暴击率", value: placeholder, base: "", plus: "" },
+          { key: "cdmg", title: "暴击伤害", value: placeholder, base: "", plus: "" },
+          { key: "pres", title: "物抗", value: placeholder, base: "", plus: "" },
+          { key: "sres", title: "法抗", value: placeholder, base: "", plus: "" },
+          { key: "heal", title: "受治疗", value: placeholder, base: "", plus: "" },
+        ]
+
+        try {
+          const fragments = buildPanelStatsFromFriendPanel(computed.panel)
+          for (const s of stats) {
+            const frag = fragments?.[s.key]
+            if (!frag) continue
+            if (frag.value) s.value = frag.value
+            if (frag.base) s.base = frag.base
+            if ((frag.value || frag.base) && frag.plus !== undefined && frag.plus !== null && frag.plus !== "") s.plus = frag.plus
+          }
+        } catch {}
+
+        const cv = computed.charView && typeof computed.charView === "object" ? computed.charView : {}
+        const charName = String(computed.charMeta?.nameCn || computed.charMeta?.name || resolvedName || query)
+
+        const mainAttr = String(cv.mainAttrType || "").trim().toLowerCase()
+        const propertyMap = {
+          physical: "物理",
+          electromagnetic: "电磁",
+          electromagnetism: "电磁",
+          electric: "电磁",
+          heat: "灼热",
+          fire: "灼热",
+          thermal: "灼热",
+          cold: "寒冷",
+          ice: "寒冷",
+          nature: "自然",
+          natural: "自然",
+        }
+        const property = propertyMap[mainAttr] || "-"
+
+        const skills = Array.isArray(cv.skills)
+          ? cv.skills.slice(0, 8).map(s => ({ name: String(s?.name || ""), icon: "", level: Number(s?.level) || 1 }))
+          : []
+
+        const weaponRaw = String(cv.weapon?.rawName || "").trim()
+        const weaponIcon = weaponRaw ? pluginResourcesRelPath(`endfield/itemiconbig/${weaponRaw}.png`) : ""
+        const weapon = cv.weapon
+          ? {
+              name: String(cv.weapon?.name || "武器"),
+              icon: weaponIcon,
+              level: Number(cv.weapon?.level) || 0,
+              rarity: 0,
+              refine: Number(cv.weapon?.refine) || 0,
+              breakthrough: Number(cv.weapon?.breakthrough) || 0,
+              terms: Array.isArray(computed.weaponTerms) ? computed.weaponTerms : [],
+            }
+          : null
+
+        const weaponStars = []
+
+        const equipBySlot = new Map()
+        if (Array.isArray(cv.equips)) {
+          for (const eq of cv.equips) {
+            const slot = Number(eq?.slot)
+            if (!Number.isFinite(slot)) continue
+            equipBySlot.set(slot, eq)
+          }
+        }
+
+        const buildEquip = (slot, slotName) => {
+          const eq = equipBySlot.get(slot)
+          if (!eq) return null
+          return { slotName, name: String(eq.name || placeholder), icon: "", level: "" }
+        }
+
+        const bodyEquip = buildEquip(1, "护甲")
+        const equipSlots = [buildEquip(0, "护手"), buildEquip(2, "配件1"), buildEquip(3, "配件2")]
+          .filter(Boolean)
+
+        if (cv.tacticalItem?.name) {
+          equipSlots.push({ slotName: "战术道具", name: String(cv.tacticalItem.name), icon: "", level: "" })
+        }
+
+        // Reuse the same equip detail filling logic.
+        const slotIdBySlotName = {
+          护手: 0,
+          护甲: 1,
+          配件1: 2,
+          配件2: 3,
+        }
+
+        const equipItems = [bodyEquip, ...equipSlots]
+          .filter(Boolean)
+          .map(equip => {
+            const slotName = String(equip?.slotName || "").trim()
+            return {
+              slotName,
+              name: String(equip?.name || placeholder),
+              icon: String(equip?.icon || ""),
+              level: String(equip?.level || ""),
+              slotId: Object.prototype.hasOwnProperty.call(slotIdBySlotName, slotName) ? slotIdBySlotName[slotName] : null,
+              detail: { main: null, subs: [] },
+            }
+          })
+
+        const friendEquipMods = Array.isArray(computed.equipMods) ? computed.equipMods : []
+        const friendAttrNameMap = computed.attrNameMap && typeof computed.attrNameMap === "object" ? computed.attrNameMap : {}
+
+        if (friendEquipMods.length) {
+          try {
+            const modsBySlot = new Map()
+            for (const m of friendEquipMods) {
+              const slot = Number(m?.slot)
+              if (!Number.isFinite(slot) || slot < 0) continue
+              if (!modsBySlot.has(slot)) modsBySlot.set(slot, [])
+              modsBySlot.get(slot).push(m)
+            }
+
+            const fmtValue = (value, mode) => {
+              const v = Number(value)
+              if (!Number.isFinite(v)) return ""
+              if (String(mode || "").toLowerCase() === "ratio") {
+                const pct = v * 100
+                const abs = Math.abs(pct)
+                const s = Number.isInteger(abs) ? String(abs) : abs.toFixed(1)
+                return (pct >= 0 ? "+" : "-") + s + "%"
+              }
+              const abs = Math.abs(v)
+              const s = Number.isInteger(abs) ? String(abs) : abs.toFixed(1)
+              return (v >= 0 ? "+" : "-") + s
+            }
+
+            const fmtAttr = mod => {
+              if (!mod) return null
+              const typeId = Number(mod.attr_type)
+              const name =
+                (Number.isFinite(typeId) && friendAttrNameMap?.[typeId] ? String(friendAttrNameMap[typeId]) : "") ||
+                String(mod.attr_name || "") ||
+                (Number.isFinite(typeId) ? `Attr${typeId}` : "属性")
+              const val = fmtValue(mod.value, mod.mode)
+              if (!name && !val) return null
+              return { name: name || "属性", value: val }
+            }
+
+            for (const equip of equipItems) {
+              const slotId = equip?.slotId
+              if (slotId === null || slotId === undefined) continue
+              const mods = modsBySlot.get(Number(slotId)) || []
+              if (!mods.length) continue
+
+              const main = mods.find(m => m.source === "equip_base" && Number(m.attr_index) === 0) ||
+                mods.find(m => m.source === "equip_base") ||
+                null
+              const subs = mods
+                .filter(m => m.source === "equip_display")
+                .slice()
+                .sort((a, b) => Number(a.attr_index) - Number(b.attr_index))
+                .slice(0, 3)
+
+              const mainObj = fmtAttr(main)
+              if (mainObj) equip.detail.main = mainObj
+
+              const subsObjs = subs.map(fmtAttr).filter(Boolean)
+              equip.detail.subs = subsObjs.slice(0, 3)
+            }
+          } catch {}
+        }
+
+        const rarityStars = []
+        const profession = "-"
+        const weaponType = "-"
+        const charTags = []
+
+        const img = await renderImg(
+          "enduid/panel",
+          {
+            elem: "sr",
+            imgType: "png",
+            charName,
+            charUrl: "",
+            rarityStars,
+            property,
+            profession,
+            weaponType,
+            charTags,
+            level: Number(cv.level) || 0,
+            evolvePhase: 0,
+            potential: Number(cv.potential) || 0,
+            skills,
+            stats,
+            weapon,
+            weaponStars,
+            bodyEquip,
+            equipSlots,
+            equipItems,
+            userName: String(profile.name || account.nickname || "-"),
+            userUid: uidForFriend,
+            userLevel: profile.adventure_level ?? "-",
+            userWorldLevel: "-",
+            userAvatarUrl: "",
+            time: "",
+            subtitle: "",
+            copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
+          },
+          { scale: 2, quality: 100 },
+        )
+
+        if (img) {
+          await e.reply(img, true)
+          return true
+        }
+
+        await e.reply(`${GAME_TITLE} 面板图片渲染失败`, true)
+        return true
+      }
+    } catch {}
+
     const result = await getCardDetailForUser(uid)
     if (!result.ok) {
       await e.reply(result.message, true)
@@ -278,9 +624,6 @@ export class card extends plugin {
     }
 
     let char = null
-    const resolved = await resolveAliasEntry(query)
-    const resolvedId = String(resolved?.entry?.id || "").trim()
-    const resolvedName = String(resolved?.entry?.name || resolved?.key || "").trim()
 
     if (resolvedId) {
       char = chars.find(c => String(c?.charData?.id || c?.id || "").trim() === resolvedId) || null
@@ -309,6 +652,248 @@ export class card extends plugin {
     const cData = char?.charData || {}
     const userSkills = char?.userSkills || {}
     const skills = Array.isArray(cData.skills) ? cData.skills : []
+
+    // Optional: use friend API to补全面板数值（HP/ATK/DEF/暴击等）。
+    // 失败时自动降级，不影响原有渲染。
+    let friendPanel = null
+    let friendEquipMods = []
+    let friendAttrNameMap = {}
+    let friendCharNameCn = ""
+    let friendWeaponTerms = []
+    try {
+      await (async () => {
+      const friendEnabled = cfg.friendApi?.enable !== false && cfg.friendApi?.baseUrl
+      const uidForFriend = String(base.roleId || result.account.uid || "").trim()
+      if (!friendEnabled || !uidForFriend) return
+
+      const candidates = [
+        cData.id,
+        cData.templateId,
+        cData.template_id,
+        cData.rawName,
+        cData.raw_name,
+        cData.charId,
+        cData.characterId,
+        cData.character_id,
+        char?.id,
+      ]
+        .map(v => String(v || "").trim())
+        .filter(Boolean)
+
+      const normalizeAscii = raw =>
+        String(raw || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "")
+
+      const normalizeName = raw =>
+        String(raw || "")
+          .trim()
+          // Keep only CJK + ASCII letters/digits; remove punctuation/spaces.
+          .replace(/[^0-9a-z\u4e00-\u9fff]+/gi, "")
+
+      const normalizeCjk = raw =>
+        String(raw || "")
+          .trim()
+          .replace(/[^\u4e00-\u9fff]+/g, "")
+
+      const expectedName = String(cData?.name || resolvedName || query || "").trim()
+      const expectedNorm = normalizeName(expectedName)
+      const expectedCjk = normalizeCjk(expectedName)
+
+      const normalizeTemplateId = raw => {
+        const s = String(raw || "").trim()
+        if (!s) return ""
+
+        // Accept variations like:
+        // - chr_9000_endmin
+        // - Chr_5_Chen
+        // - char_0009_azrila
+        // - 9000_endmin (only when it's the whole token)
+        // - chr_9000_endmin_NormalSkill (extracts chr_9000_endmin)
+        let m = s.match(/(?:chr|char)_(\d{1,4})_([a-z0-9]+)/i)
+        if (!m) m = s.match(/^(\d{1,4})_([a-z0-9]+)$/i)
+        if (!m?.[1] || !m?.[2]) return ""
+
+        const num = String(m[1]).padStart(4, "0")
+        const code = String(m[2]).toLowerCase()
+        return `chr_${num}_${code}`
+      }
+
+      const tryFetch = async templateId => {
+        const tid = String(templateId || "").trim().toLowerCase()
+        if (!tid) return false
+        const res = await getFriendCharComputed({ roleId: uidForFriend, templateId: tid })
+        if (!res?.ok || !res.panel) return false
+
+        const gotNameCn = String(res.charMeta?.nameCn || "").trim()
+        const gotNorm = normalizeName(gotNameCn)
+        const gotCjk = normalizeCjk(gotNameCn)
+
+        // Guarantee: only apply when friend char name matches the card char name.
+        if (expectedCjk) {
+          if (!gotCjk || gotCjk !== expectedCjk) return false
+        } else if (expectedNorm) {
+          if (!gotNorm || gotNorm !== expectedNorm) return false
+        } else {
+          if (!gotNorm) return false
+        }
+
+        friendCharNameCn = gotNameCn
+
+        friendPanel = res.panel
+        friendEquipMods = Array.isArray(res.equipMods) ? res.equipMods : []
+        friendAttrNameMap = res.attrNameMap && typeof res.attrNameMap === "object" ? res.attrNameMap : {}
+        friendWeaponTerms = Array.isArray(res.weaponTerms) ? res.weaponTerms : []
+        return true
+      }
+
+      const tryFetchByRoleId = async (roleId, templateId) => {
+        const rid = String(roleId || "").trim()
+        const tid = String(templateId || "").trim().toLowerCase()
+        if (!rid || !tid) return false
+
+        const res = await getFriendCharComputedByRoleId({ roleId: rid, templateId: tid })
+        if (!res?.ok || !res.panel) return false
+
+        const gotNameCn = String(res.charMeta?.nameCn || "").trim()
+        const gotNorm = normalizeName(gotNameCn)
+        const gotCjk = normalizeCjk(gotNameCn)
+
+        if (expectedCjk) {
+          if (!gotCjk || gotCjk !== expectedCjk) return false
+        } else if (expectedNorm) {
+          if (!gotNorm || gotNorm !== expectedNorm) return false
+        } else {
+          if (!gotNorm) return false
+        }
+
+        friendCharNameCn = gotNameCn
+        friendPanel = res.panel
+        friendEquipMods = Array.isArray(res.equipMods) ? res.equipMods : []
+        friendAttrNameMap = res.attrNameMap && typeof res.attrNameMap === "object" ? res.attrNameMap : {}
+        friendWeaponTerms = Array.isArray(res.weaponTerms) ? res.weaponTerms : []
+        return true
+      }
+
+      // 1) Quick path: parse template_id from message / card detail.
+      let templateId = ""
+      {
+        const m1 = msg.match(/((?:chr|char)_\d{1,4}_[a-z0-9]+)/i)
+        const m2 = msg.match(/(?:^|\s)(\d{1,4}_[a-z0-9]+)(?=\s|$)/i)
+        templateId = normalizeTemplateId(m1?.[1] || m2?.[1] || "")
+      }
+      if (!templateId) {
+        for (const v of candidates) {
+          templateId = normalizeTemplateId(v)
+          if (templateId) break
+        }
+      }
+
+      if (!templateId) {
+        // Fallback: template id may appear in nested strings (URLs/skill ids).
+        try {
+          const text = JSON.stringify({ cData, char })
+          const m = text.match(/((?:chr|char)_\d{1,4}_[a-z0-9]+)/i)
+          if (m?.[1]) templateId = normalizeTemplateId(m[1])
+        } catch {}
+      }
+
+      // Try direct fetch first.
+      if (templateId) {
+        await tryFetch(templateId)
+        if (friendPanel) return
+      }
+
+      // 2) Robust mapping: uid -> role_id -> detail(char list) -> pick template_id -> fetch.
+      if (!friendPanel) {
+        const detail = await getFriendDetail({ uidOrRoleId: uidForFriend })
+        const resolvedRoleId = String(detail?.roleId || "").trim()
+        const charList = Array.isArray(detail?.chars) ? detail.chars : []
+        if (!resolvedRoleId || !charList.length) return
+
+        const tids = charList
+          .map(c => String(c?.template_id || "").trim().toLowerCase())
+          .filter(Boolean)
+
+        // Prefer name->template_id mapping from /friend/detail.
+        if (expectedCjk) {
+          const hits = charList
+            .map(c => ({
+              tid: String(c?.template_id || "").trim().toLowerCase(),
+              nameCn: String(c?.template?.name_cn || "").trim(),
+            }))
+            .filter(x => x.tid && normalizeCjk(x.nameCn) === expectedCjk)
+            .map(x => x.tid)
+          const uniq = Array.from(new Set(hits))
+          if (uniq.length === 1) {
+            await tryFetchByRoleId(resolvedRoleId, uniq[0])
+            if (friendPanel) return
+          }
+        }
+
+        // Build an ordered candidate list. We will try each template_id and only accept
+        // if /friend/char returns a matching `name_cn`.
+        const ordered = []
+        const push = v => {
+          const s = String(v || "").trim().toLowerCase()
+          if (!s) return
+          if (!ordered.includes(s)) ordered.push(s)
+        }
+
+        // Prefer obvious ones first.
+        if (expectedName && /管理员/i.test(expectedName)) {
+          tids.filter(t => t.endsWith("_endmin")).forEach(push)
+        }
+
+        // Prefer numeric id matches.
+        const rawId = cData.id ?? char?.id
+        const n = Number.parseInt(String(rawId ?? "").trim(), 10)
+        if (Number.isFinite(n) && n >= 0 && n <= 9999) {
+          const prefix = `chr_${String(n).padStart(4, "0")}_`
+          tids.filter(t => t.startsWith(prefix)).forEach(push)
+        }
+
+        // Prefer raw/english tokens.
+        const rawTokens = [
+          cData.rawName,
+          cData.raw_name,
+          cData.enName,
+          cData.en_name,
+          cData.nameEn,
+          cData.name_en,
+        ]
+          .map(normalizeAscii)
+          .filter(Boolean)
+        if (rawTokens.length) {
+          for (const t of tids) {
+            const m = t.match(/^chr_\d{4}_([a-z0-9]+)$/)
+            const code = normalizeAscii(m?.[1] || "")
+            if (code && rawTokens.some(x => x === code || x.includes(code) || code.includes(x))) push(t)
+          }
+        }
+
+        // Prefer level/potential matches.
+        const lv = Number(char?.level) || 0
+        const pot = Number(char?.potentialLevel) || 0
+        if (lv > 0) {
+          for (const c of charList) {
+            const clv = Number(c?.level) || 0
+            const cpot = Number(c?.potential_level ?? c?.potentialLevel) || 0
+            if (clv === lv && cpot === pot) push(c?.template_id)
+          }
+        }
+
+        // Finally, try every template_id from char list.
+        tids.forEach(push)
+
+        for (const tid of ordered) {
+          await tryFetchByRoleId(resolvedRoleId, tid)
+          if (friendPanel) break
+        }
+      }
+      })()
+    } catch {}
 
     const weaponData = char?.weapon?.weaponData || {}
     const weaponName = weaponData?.name || ""
@@ -340,17 +925,20 @@ export class card extends plugin {
             rarity: weaponRarity,
             refine,
             breakthrough: breakLv,
+            terms: Array.isArray(friendWeaponTerms) ? friendWeaponTerms : [],
           }
         : null
 
     function equipToView(slotName, equip) {
       const data = equip?.equipData
       if (!data?.name) return null
+      const lv0 = pickValue(data.level)
+      const lv = lv0 === 0 || lv0 ? String(lv0).trim() : ""
       return {
         slotName,
         name: String(data.name || ""),
         icon: String(data.iconUrl || "").trim(),
-        level: String(pickValue(data.level) || "").trim(),
+        level: lv,
       }
     }
 
@@ -369,57 +957,143 @@ export class card extends plugin {
         : null,
     ]
       .filter(Boolean)
-      .slice(0, 4)
-
-    while (equipSlots.length < 4) equipSlots.push(null)
 
     const placeholder = "———"
 
     const stats = [
-      { key: "hp", title: "生命", value: placeholder, base: placeholder, plus: placeholder },
-      { key: "atk", title: "攻击", value: placeholder, base: placeholder, plus: placeholder },
-      { key: "def", title: "防御", value: placeholder, base: placeholder, plus: placeholder },
-      { key: "speed", title: "速度", value: placeholder, base: placeholder, plus: placeholder },
-      { key: "cpct", title: "暴击率", value: placeholder, base: placeholder, plus: placeholder },
-      { key: "cdmg", title: "暴击伤害", value: placeholder, base: placeholder, plus: placeholder },
+      { key: "hp", title: "生命", value: placeholder, base: "", plus: "" },
+      { key: "atk", title: "攻击", value: placeholder, base: "", plus: "" },
+      { key: "def", title: "防御", value: placeholder, base: "", plus: "" },
+      { key: "speed", title: "敏捷", value: placeholder, base: "", plus: "" },
+      { key: "str", title: "力量", value: placeholder, base: "", plus: "" },
+      { key: "wis", title: "智识", value: placeholder, base: "", plus: "" },
+      { key: "will", title: "意志", value: placeholder, base: "", plus: "" },
+      { key: "cpct", title: "暴击率", value: placeholder, base: "", plus: "" },
+      { key: "cdmg", title: "暴击伤害", value: placeholder, base: "", plus: "" },
+      { key: "pres", title: "物抗", value: placeholder, base: "", plus: "" },
+      { key: "sres", title: "法抗", value: placeholder, base: "", plus: "" },
+      { key: "heal", title: "受治疗", value: placeholder, base: "", plus: "" },
     ]
 
-    const equipDefaults = [
-      { slotName: "护甲" },
-      { slotName: "护手" },
-      { slotName: "配件1" },
-      { slotName: "配件2" },
-      { slotName: "战术道具" },
-    ]
+    if (friendPanel) {
+      try {
+        const fragments = buildPanelStatsFromFriendPanel(friendPanel)
+        for (const s of stats) {
+          const frag = fragments?.[s.key]
+          if (!frag) continue
+          if (frag.value) s.value = frag.value
+          if (frag.base) s.base = frag.base
+          // plus 允许为 "0"（显示 +0），但必须有 value/base 才写入。
+          if ((frag.value || frag.base) && frag.plus !== undefined && frag.plus !== null && frag.plus !== "") s.plus = frag.plus
+        }
+      } catch {}
+    }
 
-    const equipItems = [bodyEquip, ...equipSlots].map((equip, idx) => {
-      const baseInfo = equipDefaults[idx] || { slotName: `装备${idx + 1}` }
-      return {
-        slotName: String(equip?.slotName || baseInfo.slotName || ""),
-        name: String(equip?.name || placeholder),
-        icon: String(equip?.icon || ""),
-        level: String(equip?.level || ""),
-        detail: {
-          main: placeholder,
-          subs: [placeholder, placeholder, placeholder],
-        },
-      }
-    })
+    const slotIdBySlotName = {
+      护手: 0,
+      护甲: 1,
+      配件1: 2,
+      配件2: 3,
+    }
+
+    const equipItems = [bodyEquip, ...equipSlots]
+      .filter(Boolean)
+      .map(equip => {
+        const slotName = String(equip?.slotName || "").trim()
+        return {
+          slotName,
+          name: String(equip?.name || placeholder),
+          icon: String(equip?.icon || ""),
+          level: String(equip?.level || ""),
+          // Friend API equip slot mapping: 0=护手 1=护甲 2=配件1 3=配件2
+          slotId: Object.prototype.hasOwnProperty.call(slotIdBySlotName, slotName) ? slotIdBySlotName[slotName] : null,
+          detail: {
+            // main/subs are omitted when unavailable to avoid placeholder noise in UI.
+            main: null,
+            subs: [],
+          },
+        }
+      })
+
+    // Try to fill装备属性展示（main + 3 subs） from friend API runtime modifiers.
+    if (friendEquipMods.length) {
+      try {
+        const modsBySlot = new Map()
+        for (const m of friendEquipMods) {
+          const slot = Number(m?.slot)
+          if (!Number.isFinite(slot) || slot < 0) continue
+          if (!modsBySlot.has(slot)) modsBySlot.set(slot, [])
+          modsBySlot.get(slot).push(m)
+        }
+
+        const fmtValue = (value, mode) => {
+          const v = Number(value)
+          if (!Number.isFinite(v)) return ""
+          if (String(mode || "").toLowerCase() === "ratio") {
+            const pct = v * 100
+            const abs = Math.abs(pct)
+            const s = Number.isInteger(abs) ? String(abs) : abs.toFixed(1)
+            return (pct >= 0 ? "+" : "-") + s + "%"
+          }
+          const abs = Math.abs(v)
+          const s = Number.isInteger(abs) ? String(abs) : abs.toFixed(1)
+          return (v >= 0 ? "+" : "-") + s
+        }
+
+        const fmtAttr = mod => {
+          if (!mod) return null
+          const typeId = Number(mod.attr_type)
+          const name =
+            (Number.isFinite(typeId) && friendAttrNameMap?.[typeId] ? String(friendAttrNameMap[typeId]) : "") ||
+            String(mod.attr_name || "") ||
+            (Number.isFinite(typeId) ? `Attr${typeId}` : "属性")
+          const val = fmtValue(mod.value, mod.mode)
+          if (!name && !val) return null
+          return { name: name || "属性", value: val }
+        }
+
+        for (const equip of equipItems) {
+          const slotId = equip?.slotId
+          if (slotId === null || slotId === undefined) continue
+          const mods = modsBySlot.get(Number(slotId)) || []
+          if (!mods.length) continue
+
+          const main = mods.find(m => m.source === "equip_base" && Number(m.attr_index) === 0) ||
+            mods.find(m => m.source === "equip_base") ||
+            null
+          const subs = mods
+            .filter(m => m.source === "equip_display")
+            .slice()
+            .sort((a, b) => Number(a.attr_index) - Number(b.attr_index))
+            .slice(0, 3)
+
+          const mainObj = fmtAttr(main)
+          if (mainObj) equip.detail.main = mainObj
+
+          const subsObjs = subs.map(fmtAttr).filter(Boolean)
+          equip.detail.subs = subsObjs.slice(0, 3)
+        }
+      } catch {}
+    }
 
     try {
       const charUrl = String(cData.illustrationUrl || cData.avatarRtUrl || cData.avatarSqUrl || "").trim()
+
+      const charTags = Array.isArray(cData.tags) ? cData.tags.slice(0, 12).map(t => String(t).trim()).filter(Boolean) : []
+
       const img = await renderImg(
         "enduid/panel",
         {
           elem: "sr",
           imgType: "png",
-          charName: String(cData.name || query),
+          // If Friend API data is used, use its name_cn to guarantee name-data consistency.
+          charName: String(friendCharNameCn || cData.name || query),
           charUrl,
           rarityStars,
           property: String(pickValue(cData.property) || "-"),
           profession: String(pickValue(cData.profession) || "-"),
           weaponType: String(pickValue(cData.weaponType) || "-"),
-          charTags: Array.isArray(cData.tags) ? cData.tags.slice(0, 8).map(t => String(t)) : [],
+          charTags,
           level: Number(char.level) || 0,
           evolvePhase: Number(char.evolvePhase) || 0,
           potential: Number(char.potentialLevel) || 0,
@@ -437,7 +1111,7 @@ export class card extends plugin {
           userAvatarUrl: String(base.avatarUrl || "").trim(),
           time: currentTs ? formatYmdHm(currentTs) : "",
           subtitle: `${GAME_TITLE} 面板`,
-          copyright: `${GAME_TITLE} zmd-plugin`,
+          copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
         },
         { scale: 2, quality: 100 },
       )

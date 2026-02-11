@@ -20,6 +20,7 @@ import { getCardDetailForUser } from "../model/card.js"
 import { updateGachaLogsForUser } from "../model/gachalog.js"
 import { getQueryUserId } from "../model/mention.js"
 import { recordFail, recordSuccess } from "../model/signStats.js"
+import { getFriendApiHealth } from "../model/friendApi.js"
 import {
   deleteAccount,
   getActiveAccount,
@@ -30,6 +31,7 @@ import {
   setActiveAccount,
   setAutoSign,
   upsertAccount,
+  upsertUidOnlyAccount,
 } from "../model/store.js"
 import { makeQrPng } from "../model/qrcode.js"
 import {
@@ -405,7 +407,7 @@ export class enduid extends plugin {
         { reg: "^#?(?:终末地|zmd)(?:菜单|指令|命令|功能)?$", fnc: "help" },
         { reg: "^#?(?:终末地|zmd)(?:帮助|help)$", fnc: "help" },
         { reg: "^#?(?:终末地|zmd)(?:登录|login|dl)$", fnc: "login" },
-        { reg: "^#?(?:终末地|zmd)(?:绑定|bind)\\s+(.+)$", fnc: "bind" },
+        { reg: "^#?(?:终末地|zmd)(?:绑定|bind)\\s*(.+)$", fnc: "bind" },
         { reg: "^#?(?:终末地|zmd)(?:查看|我的|list)$", fnc: "list" },
         { reg: "^#?(?:终末地|zmd)(?:切换|switch)\\s*(.*)$", fnc: "switch" },
         { reg: "^#?(?:终末地|zmd)(?:删除|解绑|del)\\s*(.*)$", fnc: "del" },
@@ -429,62 +431,37 @@ export class enduid extends plugin {
     const e = this.e
     const p = cfg.cmd?.prefix || "#zmd"
 
+    const isMaster = !!e.isMaster
+
     const sections = [
       {
         title: "账号",
         desc: "绑定/切换终末地账号",
         items: [
           { name: "登录", cmd: `${p}登录`, desc: "私聊扫码登录并绑定" },
-          { name: "绑定", cmd: `${p}绑定 <cred|token>`, desc: "私聊，支持 cred= / token= 前缀" },
+          { name: "绑定", cmd: `${p}绑定<cred|token>`, desc: "私聊，支持 cred= / token= 前缀" },
+          { name: "绑定UID", cmd: `${p}绑定<UID>`, desc: "无需登录，仅用于角色面板查询" },
           { name: "查看", cmd: `${p}查看`, desc: "查看已绑定账号" },
-          { name: "切换", cmd: `${p}切换 <序号|UID>`, desc: "切换当前账号" },
-          { name: "删除", cmd: `${p}删除 <序号|UID>`, desc: "删除绑定" },
+          { name: "切换", cmd: `${p}切换<序号|UID>`, desc: "切换当前账号" },
+          { name: "删除", cmd: `${p}删除<序号|UID>`, desc: "删除绑定" },
         ],
       },
       {
         title: "查询",
         desc: "每日/卡片/面板等查询",
         items: [
-          { name: "每日", cmd: `${p}每日 @用户`, desc: "体力/回满/通行证/活跃" },
+          { name: "每日", cmd: `${p}每日<@用户>`, desc: "体力/回满/通行证/活跃" },
           { name: "刷新", cmd: `${p}刷新`, desc: "刷新卡片/面板数据" },
-          { name: "卡片", cmd: `${p}卡片 @用户`, desc: "终末地卡片总览" },
-          {
-            name: "面板",
-            cmd: `#<角色>面板 @用户`,
-            desc: `兼容：${p}面板 @用户 <角色>（别名：${p}查询 / ${p}mb）`,
-          },
-          { name: "基建", cmd: `${p}基建 @用户`, desc: "地区建设/飞船信息" },
-          { name: "公告", cmd: `${p}公告 / ${p}公告 <id>`, desc: "查看公告列表/详情" },
-          {
-            name: "抽卡记录",
-            cmd: `${p}抽卡记录 / ${p}抽卡记录<UID> / ${p}抽卡记录 @用户`,
-            desc: "查看抽卡记录",
-          },
-          {
-            name: "角色抽卡记录",
-            cmd: `${p}角色记录 / ${p}角色记录<UID> / ${p}角色记录 @用户`,
-            desc: `兼容：${p}角色抽卡记录`,
-          },
-          {
-            name: "武器抽卡记录",
-            cmd: `${p}武器记录 / ${p}武器记录<UID> / ${p}武器记录 @用户`,
-            desc: `兼容：${p}武器抽卡记录`,
-          },
-          {
-            name: "更新抽卡记录",
-            cmd: `${p}更新抽卡记录 / ${p}抽卡记录更新 / ${p}更新抽卡记录<UID> / ${p}更新抽卡记录 @用户`,
-            desc: "拉取并保存抽卡记录",
-          },
-          {
-            name: "全量更新抽卡记录",
-            cmd: `${p}全量更新抽卡记录 / ${p}重新获取所有抽卡记录 / ${p}全量更新抽卡记录<UID> / ${p}全量更新抽卡记录 @用户`,
-            desc: "全量重拉并覆盖本地缓存（修复池子统计异常）",
-          },
-          {
-            name: "更新武器图标",
-            cmd: `${p}更新武器图标 / ${p}更新武器图标<UID>`,
-            desc: "从 wiki 补全抽卡武器图标缓存（可选：强制；全部仅 master）",
-          },
+          { name: "卡片", cmd: `${p}卡片<@用户>`, desc: "终末地卡片总览" },
+          { name: "面板", cmd: `#<角色>面板<@用户>`, desc: "角色面板" },
+          { name: "基建", cmd: `${p}基建<@用户>`, desc: "地区建设/飞船信息" },
+          { name: "公告", cmd: `${p}公告<id>`, desc: "查看公告列表/详情（不填 id 为列表）" },
+          { name: "抽卡记录", cmd: `${p}抽卡记录<UID/@他人>`, desc: "查看抽卡记录" },
+          { name: "角色记录", cmd: `${p}角色记录<UID/@他人>`, desc: "只看角色池" },
+          { name: "武器记录", cmd: `${p}武器记录<UID/@他人>`, desc: "只看武器池" },
+          { name: "更新抽卡记录", cmd: `${p}更新抽卡记录<UID/@他人>`, desc: "拉取并保存抽卡记录" },
+          { name: "全量更新抽卡记录", cmd: `${p}全量更新抽卡记录<UID/@他人>`, desc: "全量重拉并覆盖本地缓存" },
+          { name: "更新武器图标", cmd: `${p}更新武器图标<UID>`, desc: "从 wiki 补全抽卡武器图标缓存（可选：强制）" },
         ],
       },
       {
@@ -511,7 +488,7 @@ export class enduid extends plugin {
         items: [
           { name: "角色列表", cmd: `${p}角色列表`, desc: "" },
           { name: "武器列表", cmd: `${p}武器列表`, desc: "" },
-          { name: "卡池信息", cmd: `${p}卡池`, desc: `别名：${p}卡池信息 / ${p}up角色` },
+          { name: "卡池信息", cmd: `${p}卡池`, desc: "" },
           { name: "查询图鉴", cmd: `${p}<名称>图鉴`, desc: "后缀可用：介绍/技能/天赋/潜能/专武/武器" },
         ],
       },
@@ -536,6 +513,13 @@ export class enduid extends plugin {
       },
     ]
 
+    const visibleSections = sections
+      .map(s => ({
+        ...s,
+        items: Array.isArray(s.items) ? s.items.filter(it => isMaster || it?.badge !== "MASTER") : [],
+      }))
+      .filter(s => Array.isArray(s.items) && s.items.length)
+
     try {
       const t = new Date()
       const yyyy = t.getFullYear()
@@ -558,13 +542,13 @@ export class enduid extends plugin {
         "help/index",
         {
           title: `${GAME_TITLE} 指令菜单`,
-          subtitle: `命令别名：#终末地xxx / #zmdxxx`,
+          subtitle: "",
           avatar,
           prefix: p,
           time: `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`,
-          sections,
+          sections: visibleSections,
           imgType: "png",
-          copyright: `${GAME_TITLE} ${PLUGIN_ID}`,
+          copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
         },
         { scale: 1.2, quality: 100 },
       )
@@ -576,56 +560,62 @@ export class enduid extends plugin {
       logger.error(`${GAME_TITLE} 帮助菜单图片渲染失败：${err?.message || err}`)
     }
 
-    const msg = [
-      `${GAME_TITLE} 总帮助菜单`,
-      `命令别名：#终末地xxx / #zmdxxx`,
+    const lines = [
+      `${GAME_TITLE} 帮助`,
       ``,
       `【账号】`,
-      `- ${p}登录  （私聊扫码登录并绑定）`,
-      `- ${p}绑定 <cred|token>  （私聊，支持 cred= / token= 前缀）`,
-      `- ${p}查看  （查看已绑定账号）`,
-      `- ${p}切换 <序号|UID>  （切换当前账号）`,
-      `- ${p}删除 <序号|UID>  （删除绑定）`,
+      `- ${p}登录（私聊扫码登录并绑定）`,
+      `- ${p}绑定<cred|token>（私聊）`,
+      `- ${p}绑定<UID>（无需登录，仅用于角色面板查询）`,
+      `- ${p}查看`,
+      `- ${p}切换<序号|UID>`,
+      `- ${p}删除<序号|UID>`,
       ``,
       `【查询】`,
-      `- ${p}每日 / ${p}每日 @用户  （体力/回满/通行证/活跃）`,
-      `- ${p}刷新  （刷新卡片/面板数据）`,
-      `- ${p}卡片 / ${p}卡片 @用户  （终末地卡片总览）`,
-      `- #<角色>面板 / #<角色>面板 @用户  （面板快捷指令）`,
-      `- ${p}面板 <角色> / ${p}查询 <角色> / ${p}mb <角色>`,
-      `- ${p}面板 @用户 <角色> / ${p}查询 @用户 <角色> / ${p}mb @用户 <角色>`,
-      `- ${p}基建 / ${p}基建 @用户  （地区建设/飞船信息）`,
-      `- ${p}公告 / ${p}公告 <id>`,
-      `- ${p}抽卡记录 / ${p}抽卡记录<UID> / ${p}抽卡记录 @用户  （查看抽卡记录）`,
-      `- ${p}角色记录 / ${p}角色记录<UID> / ${p}角色记录 @用户  （只看角色池，兼容 ${p}角色抽卡记录）`,
-      `- ${p}武器记录 / ${p}武器记录<UID> / ${p}武器记录 @用户  （只看武器池，兼容 ${p}武器抽卡记录）`,
-      `- ${p}更新抽卡记录 / ${p}抽卡记录更新 / ${p}更新抽卡记录<UID> / ${p}更新抽卡记录 @用户  （刷新抽卡记录，可能耗时）`,
-      `- ${p}全量更新抽卡记录 / ${p}重新获取所有抽卡记录 / ${p}全量更新抽卡记录<UID> / ${p}全量更新抽卡记录 @用户  （全量重拉并覆盖本地缓存）`,
-      `- ${p}更新武器图标 / ${p}更新武器图标<UID>  （补全抽卡武器图标缓存；可加 强制；全部仅 master）`,
+      `- ${p}每日<@用户>`,
+      `- ${p}刷新`,
+      `- ${p}卡片<@用户>`,
+      `- #<角色>面板<@用户>`,
+      `- ${p}基建<@用户>`,
+      `- ${p}公告<id>`,
+      `- ${p}抽卡记录<UID/@他人>`,
+      `- ${p}角色记录<UID/@他人>`,
+      `- ${p}武器记录<UID/@他人>`,
+      `- ${p}更新抽卡记录<UID/@他人>`,
+      `- ${p}全量更新抽卡记录<UID/@他人>`,
+      `- ${p}更新武器图标<UID>（可选：强制）`,
       ``,
       `【别名】`,
-      `- ${p}别名 <角色>  （查看别名列表）`,
-      `- ${p}添加别名 <角色> <别名>`,
-      `- ${p}删除别名 <角色> <别名>`,
+      `- ${p}别名<角色>`,
+      `- ${p}添加别名<角色><别名>`,
+      `- ${p}删除别名<角色><别名>`,
       ``,
       `【推送】`,
-      `- ${p}订阅公告 / ${p}取消订阅公告  （群聊）`,
+      `- ${p}订阅公告`,
+      `- ${p}取消订阅公告`,
+      isMaster ? `- ${p}清理公告缓存（仅 master）` : "",
       ``,
       `【图鉴】`,
-      `- ${p}角色列表 / ${p}武器列表 / ${p}卡池`,
-      `- ${p}<名称>图鉴  （可用：介绍/技能/天赋/潜能/专武/武器）`,
+      `- ${p}角色列表`,
+      `- ${p}武器列表`,
+      `- ${p}卡池`,
+      `- ${p}<名称>图鉴`,
       ``,
       `【签到】`,
       `- ${p}签到`,
       `- ${p}开启自动签到 / ${p}关闭自动签到`,
-      `- ${p}全部签到  （仅 master）`,
+      isMaster ? `- ${p}全部签到（仅 master）` : "",
       ``,
       `【其他】`,
-      `- ${p}状态 / ${p}更新日志 / ${p}环境`,
-      `- ${p}上传背景图  （仅 master，发送命令时附图）`,
-    ].join("\n")
+      `- ${p}状态`,
+      `- ${p}更新日志`,
+      `- ${p}环境`,
+      isMaster ? `- ${p}上传背景图（仅 master）` : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
 
-    await e.reply(msg, true)
+    await e.reply(lines, true)
     return true
   }
 
@@ -684,6 +674,15 @@ export class enduid extends plugin {
       const msg = String(err?.message || err).split("\n")[0]
       qrcodeDep = `缺少（pnpm add qrcode）：${msg}`
     }
+    let friendApiHealth = "(disabled)"
+    try {
+      if (cfg.friendApi?.enable !== false && cfg.friendApi?.baseUrl) {
+        const res = await getFriendApiHealth({ timeoutMs: 1500 })
+        friendApiHealth = res.ok ? "ok" : `fail:${res.message || "unknown"}`
+      }
+    } catch (err) {
+      friendApiHealth = `fail:${err?.message || err}`
+    }
     const lines = [
       `${GAME_TITLE} 环境诊断：`,
       `node.execPath: ${process.execPath}`,
@@ -691,6 +690,9 @@ export class enduid extends plugin {
       `qrcode(dep): ${qrcodeDep}`,
       `smsdk.smSdkPath: ${cfg.smsdk?.smSdkPath ? cfg.smsdk.smSdkPath : "(未配置)"} `,
       `smsdk(自动探测): ${smsdkPath ? smsdkPath : "(未找到)"} `,
+      `friendApi.enable: ${cfg.friendApi?.enable === false ? "false" : "true"}`,
+      `friendApi.baseUrl: ${cfg.friendApi?.baseUrl ? cfg.friendApi.baseUrl : "(未配置)"}`,
+      `friendApi.health: ${friendApiHealth}`,
     ]
     await e.reply(lines.join("\n"), true)
     return true
@@ -698,16 +700,41 @@ export class enduid extends plugin {
 
   async bind() {
     const e = this.e
-    if (!e.isPrivate) {
-      await e.reply(`${GAME_TITLE} 为了安全，请私聊发送：${cfg.cmd?.prefix || "#zmd"}绑定 <cred|token>`, true)
+    const p = cfg.cmd?.prefix || "#zmd"
+    const text = normalizeText(e.msg.replace(/^#?(?:终末地|zmd)(?:绑定|bind)/i, ""))
+
+    // UID-only binding (panel-only). Allowed in group/private.
+    let uidOnly = String(text || "").trim()
+    if (/^uid[=:]/i.test(uidOnly)) uidOnly = uidOnly.slice(4)
+    uidOnly = uidOnly.replace(/^\+/, "")
+    if (/^\d{5,13}$/.test(uidOnly)) {
+      try {
+        await upsertUidOnlyAccount(e.user_id, { uid: uidOnly })
+      } catch (err) {
+        await e.reply(`${GAME_TITLE} UID 绑定失败：${err?.message || err}`, true)
+        return true
+      }
+
+      const friendHint = cfg.friendApi?.enable === false || !cfg.friendApi?.baseUrl
+        ? "\n提示：未配置 friendApi，面板查询可能不可用"
+        : ""
+      await e.reply(`${GAME_TITLE} UID 绑定成功（仅面板）\nUID: ${uidOnly}${friendHint}`, true)
       return true
     }
 
-    const text = normalizeText(e.msg.replace(/^#?(?:终末地|zmd)(?:绑定|bind)/i, ""))
+    // cred/token binding must be private.
+    if (!e.isPrivate) {
+      await e.reply(
+        `${GAME_TITLE} 为了安全，请私聊发送：${p}绑定<cred|token>\n也可直接绑定 UID：${p}绑定<UID>（仅面板）`,
+        true,
+      )
+      return true
+    }
+
     const { kind, value } = parseCredential(text)
 
     if (!kind) {
-      await replyPrivate(e, `${GAME_TITLE} 参数格式错误：请发送 32 位 cred 或 24 位 token`)
+      await replyPrivate(e, `${GAME_TITLE} 参数格式错误：请发送 32 位 cred 或 24 位 token（或直接绑定 UID：${p}绑定<UID>）`)
       return true
     }
 
@@ -869,12 +896,14 @@ export class enduid extends plugin {
     const e = this.e
     const data = await getUserData(e.user_id)
     if (!data.accounts.length) {
-      await e.reply(`${GAME_TITLE} 还没有绑定账号，请先私聊：${cfg.cmd?.prefix || "#zmd"}绑定 <cred|token>`, true)
+      const p = cfg.cmd?.prefix || "#zmd"
+      await e.reply(`${GAME_TITLE} 还没有绑定账号\n- 私聊：${p}绑定<cred|token>\n- 仅面板：${p}绑定<UID>`, true)
       return true
     }
     const lines = data.accounts.map((a, idx) => {
       const activeMark = idx === Number(data.active || 0) ? "（当前）" : ""
-      return `${idx + 1}. ${a.nickname || "未命名"} UID:${a.uid || "-"} S:${a.serverId || "1"} ${activeMark}`.trim()
+      const panelOnly = a.uidOnly ? "（仅面板）" : ""
+      return `${idx + 1}. ${a.nickname || "未命名"} UID:${a.uid || "-"} S:${a.serverId || "1"} ${panelOnly}${activeMark}`.trim()
     })
     await e.reply(`${GAME_TITLE} 已绑定账号：\n${lines.join("\n")}`, true)
     return true
@@ -889,7 +918,7 @@ export class enduid extends plugin {
       return true
     }
     const a = res.data.accounts[res.index]
-    await e.reply(`${GAME_TITLE} 已切换：${a.nickname || "未命名"} UID:${a.uid}`, true)
+    await e.reply(`${GAME_TITLE} 已切换：${a.nickname || "未命名"} UID:${a.uid}${a.uidOnly ? "（仅面板）" : ""}`, true)
     return true
   }
 
@@ -912,8 +941,16 @@ export class enduid extends plugin {
   async sign() {
     const e = this.e
     const { account } = await getActiveAccount(e.user_id)
-    if (!account?.cred || !account?.uid) {
-      await e.reply(`${GAME_TITLE} 未绑定账号，请先私聊：${cfg.cmd?.prefix || "#zmd"}绑定 <cred|token>`, true)
+    if (!account?.uid) {
+      await e.reply(`${GAME_TITLE} 未绑定账号，请先私聊：${cfg.cmd?.prefix || "#zmd"}绑定<cred|token>`, true)
+      return true
+    }
+    if (!account?.cred) {
+      if (account?.uidOnly) {
+        await e.reply(`${GAME_TITLE} 当前账号仅绑定UID（仅面板），不支持签到`, true)
+        return true
+      }
+      await e.reply(`${GAME_TITLE} 未绑定账号，请先私聊：${cfg.cmd?.prefix || "#zmd"}绑定<cred|token>`, true)
       return true
     }
 
@@ -1190,13 +1227,21 @@ export class enduid extends plugin {
 
   async autoSignOn() {
     const e = this.e
-    const data = await setAutoSign(e.user_id, true)
-    if (!data.accounts.length) {
-      data.autoSign = false
-      await saveUserData(e.user_id, data)
+    const { account } = await getActiveAccount(e.user_id)
+    if (!account?.uid) {
       await e.reply(`${GAME_TITLE} 还没有绑定账号，无法开启`, true)
       return true
     }
+    if (!account?.cred) {
+      if (account?.uidOnly) {
+        await e.reply(`${GAME_TITLE} 当前账号仅绑定UID（仅面板），无法开启自动签到`, true)
+        return true
+      }
+      await e.reply(`${GAME_TITLE} 还没有绑定账号，无法开启`, true)
+      return true
+    }
+
+    await setAutoSign(e.user_id, true)
     await e.reply(`${GAME_TITLE} 已开启自动签到`, true)
     return true
   }

@@ -12,6 +12,8 @@ import puppeteer from "../../../lib/puppeteer/puppeteer.js"
 import { PLUGIN_ID, PLUGIN_RESOURCES_DIR, pluginResourcesRelPath } from "./pluginMeta.js"
 import { pickRandomSideBackgroundRel } from "./sideBackground.js"
 
+const DEFAULT_WATERMARK = `[终末地]${PLUGIN_ID} & yuyu-bot`
+
 function scaleAttr(pct = 1) {
   const n = Number(pct)
   const scale = Number.isFinite(n) ? n : 1
@@ -48,7 +50,7 @@ export async function render(tplPath, params = {}, { scale = 1, quality = 100 } 
     },
     sys: {
       scale: scaleAttr(scale),
-      copyright: params.copyright || `Created By ${PLUGIN_ID}`,
+      copyright: params.copyright || DEFAULT_WATERMARK,
     },
     quality,
     imgType: imgType || undefined,

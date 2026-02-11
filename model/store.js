@@ -139,6 +139,10 @@ function normalizeAccount(rawAccount) {
   else if (rawAccount.device_token != null) rawAccount.deviceToken = String(rawAccount.device_token)
   if (rawAccount.sklandUserId != null) rawAccount.sklandUserId = String(rawAccount.sklandUserId)
 
+  // UID-only binding: allows panel queries without storing credentials.
+  const uidOnlyRaw = rawAccount.uidOnly ?? rawAccount.uid_only ?? rawAccount.panelOnly ?? rawAccount.panel_only
+  rawAccount.uidOnly = !!uidOnlyRaw && !rawAccount.cred
+
   return rawAccount
 }
 
@@ -270,6 +274,40 @@ export async function upsertAccount(userId, account) {
   if (idx >= 0) data.accounts[idx] = { ...data.accounts[idx], ...account }
   else data.accounts.push({ ...account })
   data.active = idx >= 0 ? idx : data.accounts.length - 1
+  await saveUserData(userId, data)
+  return data
+}
+
+/**
+ * Bind a game UID without credentials.
+ * This account type is intentionally limited: only panel queries can work.
+ */
+export async function upsertUidOnlyAccount(userId, { uid, nickname = "", serverId = "" } = {}) {
+  const u = String(uid ?? "").trim()
+  if (!/^\d{5,13}$/.test(u)) throw new Error("invalid uid")
+
+  const data = await getUserData(userId)
+  const idx = data.accounts.findIndex(a => String(a?.uid || "").trim() === u)
+
+  const next = {
+    uid: u,
+    nickname: String(nickname || "").trim(),
+    serverId: String(serverId || "").trim(),
+    uidOnly: true,
+  }
+
+  if (idx >= 0) {
+    const prev = data.accounts[idx] || {}
+    // Do not downgrade a full binding into UID-only.
+    const merged = { ...prev, ...next }
+    if (prev?.cred) merged.uidOnly = false
+    data.accounts[idx] = merged
+    data.active = idx
+  } else {
+    data.accounts.push(next)
+    data.active = data.accounts.length - 1
+  }
+
   await saveUserData(userId, data)
   return data
 }

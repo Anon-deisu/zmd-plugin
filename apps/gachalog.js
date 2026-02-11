@@ -125,14 +125,12 @@ export class gachalog extends plugin {
     const p = String(cfg.cmd?.prefix || "#zmd")
     const lines = [
       `${GAME_TITLE} 抽卡帮助`,
-      `1) 登录后刷新：${p}更新抽卡记录 / ${p}抽卡记录更新 / ${p}更新抽卡记录1234567890 / ${p}更新抽卡记录 @用户`,
-      `2) 全量重拉：${p}全量更新抽卡记录 / ${p}全量更新抽卡记录1234567890（别名：${p}重新获取所有抽卡记录，会覆盖本地缓存）`,
-      `3) 导入 u8_token：${p}导入抽卡记录 <u8_token 或含 u8_token= 的链接>`,
-      `4) 导入 JSON 文件：${p}导入抽卡记录（直接发送文件）`,
-      ``,
-      `查看：${p}抽卡记录 / ${p}抽卡记录1234567890 / ${p}抽卡记录 @用户`,
-      `角色：${p}角色记录 / ${p}角色记录1234567890 / ${p}角色记录 @用户`,
-      `武器：${p}武器记录 / ${p}武器记录1234567890 / ${p}武器记录 @用户`,
+      `更新：${p}更新抽卡记录<UID/@他人>`,
+      `全量：${p}全量更新抽卡记录<UID/@他人>`,
+      `查看：${p}抽卡记录<UID/@他人>`,
+      `角色：${p}角色记录<UID/@他人>`,
+      `武器：${p}武器记录<UID/@他人>`,
+      `导入：${p}导入抽卡记录<u8_token/JSON文件>`,
       `导出：${p}导出抽卡记录`,
       `删除：${p}删除抽卡记录`,
     ]
@@ -179,7 +177,7 @@ export class gachalog extends plugin {
       if (!e.isMaster) {
         const data = await getUserData(e.user_id)
         const accounts = Array.isArray(data?.accounts) ? data.accounts : []
-        const found = accounts.some(a => String(a?.uid || "").trim() === rid)
+        const found = accounts.some(a => String(a?.uid || "").trim() === rid && !a?.uidOnly)
         if (!found) {
           await e.reply(`${GAME_TITLE} 仅支持更新自己已绑定 UID 的武器图标（或由主人执行）`, true)
           return true
@@ -189,7 +187,7 @@ export class gachalog extends plugin {
     } else if (!arg) {
       const { account } = await getActiveAccount(e.user_id)
       const rid = String(account?.uid || "").trim()
-      if (!rid) {
+      if (!rid || !account?.cred || account?.uidOnly) {
         await e.reply(`${GAME_TITLE} 未绑定账号，请先私聊 ${cfg.cmd?.prefix || "#zmd"}登录 / ${cfg.cmd?.prefix || "#zmd"}绑定`, true)
         return true
       }
@@ -324,7 +322,7 @@ export class gachalog extends plugin {
           title,
           subtitle,
           imgType: "png",
-          copyright: `${GAME_TITLE} zmd-plugin`,
+          copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
         },
         { scale: 1.2, quality: 100 },
       )

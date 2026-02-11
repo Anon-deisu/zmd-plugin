@@ -58,6 +58,30 @@ const DEFAULT_CONFIG = {
   card: {
     /** 卡片详情缓存（秒），用于「卡片/面板/基建」等功能，0 为不缓存 */
     cacheSec: 600,
+    /** 兜底缓存（秒）：请求失败时返回上一次成功数据，0 为禁用 */
+    staleCacheSec: 86400,
+  },
+  friendApi: {
+    /** 第三方 /friend/* API 基地址（用于补全角色面板数值） */
+    baseUrl: "",
+    /** 请求超时（毫秒） */
+    timeoutMs: 8000,
+    /** 超时/500 时重试次数（0=不重试） */
+    retries: 1,
+    /** 重试基础延迟（毫秒），实际会按 attempt 递增 */
+    retryDelayMs: 200,
+    /** 缓存（秒），减少重复请求 */
+    cacheSec: 120,
+    /** /friend/detail 缓存（秒） */
+    detailCacheSec: 300,
+    /** /friend/char 兜底缓存（秒）：请求失败时使用上一次成功数据 */
+    staleCacheSec: 86400,
+    /** uid -> role_id 映射缓存（秒） */
+    roleIdCacheSec: 86400,
+    /** 是否启用（失败会自动降级，不影响原有面板展示） */
+    enable: true,
+    /** 使用 /friend/char_advanced 替代 /friend/char */
+    useAdvancedEndpoint: false,
   },
   ann: {
     /** 公告功能 & 定时推送开关 */

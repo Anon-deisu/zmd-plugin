@@ -1,0 +1,804 @@
+/**
+ * Third-party Friend API client.
+ *
+ * This is NOT an official Skland API. It's an internal HTTP service that exposes
+ * `/friend/*` endpoints (see reference samples under repo root).
+ *
+ * Used to补全「面板」中的数值拆解（HP/ATK/DEF/暴击等）。
+ */
+import fetch from "node-fetch"
+
+import cfg from "./config.js"
+
+function normalizeBaseUrl(raw) {
+  const u = String(raw || "").trim()
+  if (!u) return ""
+  return u.replace(/\/+$/, "")
+}
+
+function toNumber(value, def = 0) {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : def
+}
+
+function toInt(value, def = 0) {
+  const n = toNumber(value, Number.NaN)
+  return Number.isFinite(n) ? Math.round(n) : def
+}
+
+function panelCacheKey(roleId, templateId, { advanced } = {}) {
+  const r = String(roleId || "").trim()
+  const t = String(templateId || "").trim()
+  const a = advanced ? 1 : 0
+  return `Yz:EndUID:FriendPanel:${r}:${t}:${a}`
+}
+
+function computedCacheKey(roleId, templateId, { advanced } = {}) {
+  const r = String(roleId || "").trim()
+  const t = String(templateId || "").trim()
+  const a = advanced ? 1 : 0
+  return `Yz:EndUID:FriendCharComputed:${r}:${t}:${a}`
+}
+
+function staleComputedCacheKey(roleId, templateId, { advanced } = {}) {
+  const r = String(roleId || "").trim()
+  const t = String(templateId || "").trim()
+  const a = advanced ? 1 : 0
+  return `Yz:EndUID:FriendCharComputedStale:${r}:${t}:${a}`
+}
+
+function buildCharMeta(data) {
+  const d = data && typeof data === "object" ? data : {}
+  const char = d.char && typeof d.char === "object" ? d.char : {}
+  const template = char.template && typeof char.template === "object" ? char.template : {}
+  const profile = char.char_profile && typeof char.char_profile === "object" ? char.char_profile : {}
+
+  const templateId = String(char.template_id || template.id || profile.template_id || "")
+    .trim()
+    .toLowerCase()
+  const name = String(template.name || profile.name || "").trim()
+  const nameCn = String(template.name_cn || "").trim()
+  return { templateId, name, nameCn }
+}
+
+function hasCjk(text) {
+  return /[\u4e00-\u9fff]/.test(String(text || ""))
+}
+
+function pickPreferredName({ nameCn = "", name = "", rawName = "" } = {}) {
+  const cn = String(nameCn || "").trim()
+  const en = String(name || "").trim()
+  const raw = String(rawName || "").trim()
+  if (cn && hasCjk(cn)) return cn
+  return en || cn || raw
+}
+
+function buildWeaponTerms(data) {
+  const d = data && typeof data === "object" ? data : {}
+  const char = d.char && typeof d.char === "object" ? d.char : {}
+  const weapon = char.weapon && typeof char.weapon === "object" ? char.weapon : {}
+  const gems = Array.isArray(char.gems) ? char.gems : []
+
+  const attachId = String(weapon.attach_gem_id || "").trim()
+  let gem = null
+  if (attachId && attachId !== "0") {
+    gem = gems.find(g => String(g?.gem_id || "").trim() === attachId) || null
+  }
+  if (!gem && gems.length) gem = gems[0]
+
+  const terms = Array.isArray(gem?.terms) ? gem.terms : []
+
+  const pickName = t => {
+    const term = t?.term && typeof t.term === "object" ? t.term : {}
+    return pickPreferredName({ nameCn: term.name_cn, name: term.name, rawName: term.raw_name })
+  }
+
+  const out = []
+  for (const t of terms) {
+    const name = pickName(t)
+    if (!name) continue
+    const cost = toInt(t?.cost, 0)
+    // Show cost when it is meaningful; keep it ASCII for rendering stability.
+    out.push(cost > 1 ? `${name} x${cost}` : name)
+  }
+  return out
+}
+
+function buildCharView(data) {
+  const d = data && typeof data === "object" ? data : {}
+  const char = d.char && typeof d.char === "object" ? d.char : {}
+  const profile = char.char_profile && typeof char.char_profile === "object" ? char.char_profile : {}
+
+  const level = toInt(char.level, 0)
+  const potential = toInt(char.potential_level, 0)
+  const mainAttrType = String(profile.main_attr_type || "").trim()
+
+  const weapon = char.weapon && typeof char.weapon === "object" ? char.weapon : {}
+  const weaponTpl = weapon.template && typeof weapon.template === "object" ? weapon.template : {}
+  const weaponRaw = String(weaponTpl.raw_name || "").trim()
+  const weaponName = pickPreferredName({ nameCn: weaponTpl.name_cn, name: weaponTpl.name, rawName: weaponRaw })
+  const weaponView = weaponName || weaponRaw || weapon.template_id
+    ? {
+        rawName: weaponRaw,
+        name: weaponName || weaponRaw || "武器",
+        level: toInt(weapon.weapon_lv, 0),
+        breakthrough: toInt(weapon.breakthrough_lv, 0),
+        refine: toInt(weapon.refine_lv, 0),
+      }
+    : null
+
+  const med = char.equip_medicine && typeof char.equip_medicine === "object" ? char.equip_medicine : {}
+  const medRaw = String(med.raw_name || "").trim()
+  const medName = pickPreferredName({ nameCn: med.name_cn, name: med.name, rawName: medRaw })
+  const tacticalItem = medName || medRaw ? { rawName: medRaw, name: medName || medRaw } : null
+
+  const equipViews = []
+  const equips = Array.isArray(char.equip) ? char.equip : []
+  for (const eq of equips) {
+    const slot = toInt(eq?.slot, -1)
+    if (slot < 0) continue
+    const tpl = eq?.template && typeof eq.template === "object" ? eq.template : {}
+    const raw = String(tpl.raw_name || "").trim()
+    const name = pickPreferredName({ nameCn: tpl.name_cn, name: tpl.name, rawName: raw })
+    equipViews.push({ slot, rawName: raw, name: name || raw || "装备" })
+  }
+
+  const skillViews = []
+  const skills = char.skills && typeof char.skills === "object" ? char.skills : {}
+  const levelInfo = Array.isArray(skills.level_info) ? skills.level_info : []
+  for (const li of levelInfo) {
+    const skill = li?.skill && typeof li.skill === "object" ? li.skill : {}
+    const id = String(li?.skill_id || skill.id || "").trim()
+    const lv = toInt(li?.skill_level, 0)
+    const maxLv = toInt(li?.skill_max_level, 0)
+    if (!id || lv <= 0) continue
+    const name = pickPreferredName({ nameCn: skill.name_cn, name: skill.name, rawName: skill.raw_name || id })
+    if (!name) continue
+    skillViews.push({ id, name, level: lv, maxLevel: maxLv })
+  }
+
+  // Prefer skills that can actually level up; skip empty placeholders.
+  const leveled = skillViews.filter(s => s.maxLevel > 1)
+  const chosen = leveled.length ? leveled : skillViews
+  const uniq = []
+  const seen = new Set()
+  for (const s of chosen) {
+    if (!s?.id || seen.has(s.id)) continue
+    seen.add(s.id)
+    uniq.push(s)
+    if (uniq.length >= 8) break
+  }
+
+  return {
+    level,
+    potential,
+    mainAttrType,
+    weapon: weaponView,
+    equips: equipViews,
+    tacticalItem,
+    skills: uniq,
+  }
+}
+
+function roleIdCacheKey(uid) {
+  const u = String(uid || "").trim()
+  return `Yz:EndUID:FriendRoleIdByUid:${u}`
+}
+
+async function readJsonSafe(resp) {
+  const text = await resp.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+function sleep(ms) {
+  const t = Math.max(0, toInt(ms, 0))
+  if (!t) return Promise.resolve()
+  return new Promise(resolve => setTimeout(resolve, t))
+}
+
+function isRetryableHttpStatus(status) {
+  const s = Number(status)
+  return s === 429 || s === 500 || s === 502 || s === 503 || s === 504
+}
+
+async function requestCharWithFallback({ roleId, templateId, advancedWanted = false } = {}) {
+  const r = String(roleId || "").trim()
+  const t = String(templateId || "").trim()
+  if (!advancedWanted) return await requestFriendApi("/friend/char", { role_id: r, template_id: t })
+
+  // Some deployments only provide the single `/friend/char` endpoint.
+  const resAdv = await requestFriendApi("/friend/char_advanced", { role_id: r, template_id: t })
+  if (resAdv.ok) return resAdv
+  if (resAdv.message === "friendApi.http_404") return await requestFriendApi("/friend/char", { role_id: r, template_id: t })
+  return resAdv
+}
+
+export async function requestFriendApi(pathname, params, { timeoutMs, retries } = {}) {
+  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  if (!baseUrl) return { ok: false, message: "friendApi.baseUrl_not_configured" }
+
+  let url
+  try {
+    url = new URL(`${baseUrl}${pathname}`)
+  } catch {
+    return { ok: false, message: "friendApi.invalid_baseUrl" }
+  }
+
+  if (params && typeof params === "object") {
+    for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null || `${v}` === "") continue
+      url.searchParams.set(k, String(v))
+    }
+  }
+
+  const ms = Math.max(0, toInt(timeoutMs ?? cfg.friendApi?.timeoutMs, 8000))
+  const maxRetry = Math.max(0, toInt(retries ?? cfg.friendApi?.retries, 1))
+  const baseDelay = Math.max(0, toInt(cfg.friendApi?.retryDelayMs, 200))
+
+  let last = null
+  for (let attempt = 0; attempt <= maxRetry; attempt++) {
+    if (attempt > 0) await sleep(baseDelay * attempt)
+
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null
+    const timer = controller && ms > 0 ? setTimeout(() => controller.abort(), ms) : null
+
+    try {
+      const resp = await fetch(url.toString(), { method: "GET", signal: controller?.signal })
+      if (!resp.ok) {
+        const msg = `friendApi.http_${resp.status}`
+        last = { ok: false, message: msg, url: url.toString() }
+        if (attempt < maxRetry && isRetryableHttpStatus(resp.status)) continue
+        return last
+      }
+
+      const json = await readJsonSafe(resp)
+      if (!json || typeof json !== "object") {
+        last = { ok: false, message: "friendApi.invalid_json", url: url.toString() }
+        if (attempt < maxRetry) continue
+        return last
+      }
+      if (!json.ok) {
+        // API-level ok=false is usually a deterministic error (not retryable).
+        last = { ok: false, message: "friendApi.api_error", url: url.toString(), raw: json }
+        return last
+      }
+
+      return { ok: true, data: json.data, url: url.toString(), raw: json }
+    } catch (err) {
+      const msg = err?.name === "AbortError" ? "friendApi.timeout" : `friendApi.request_failed:${err?.message || err}`
+      last = { ok: false, message: msg, url: url.toString() }
+      if (attempt < maxRetry) continue
+      return last
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+  }
+
+  return last || { ok: false, message: "friendApi.unknown_error" }
+}
+
+/**
+ * Resolve the actual Friend API `role_id` from a plugin-side uid/roleId.
+ *
+ * Some deployments accept uid directly as role_id; some require an extra lookup
+ * via `/friend/search?uid=...`.
+ */
+export async function resolveFriendRoleId(uidOrRoleId, { force = false } = {}) {
+  const id = String(uidOrRoleId || "").trim()
+  if (!id) return { ok: false, message: "friendApi.missing_uid" }
+
+  const enable = cfg.friendApi?.enable !== false
+  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+
+  const cacheSec = Math.max(0, toInt(cfg.friendApi?.roleIdCacheSec, 86400))
+  const cacheKey = roleIdCacheKey(id)
+
+  if (!force && cacheSec > 0) {
+    try {
+      const cached = await redis.get(cacheKey)
+      const v = String(cached || "").trim()
+      if (v) return { ok: true, roleId: v, fromCache: true }
+    } catch {}
+  }
+
+  // Flow (preferred): uid -> role_id via search, then (fallback) treat as role_id.
+  // This matches the typical usage:
+  // - /friend/search?uid=xxx -> role_id
+  // - /friend/detail?role_id=xxx -> char list
+  let lastErr = ""
+
+  try {
+    const search = await requestFriendApi("/friend/search", { uid: id })
+    if (search.ok) {
+      const items = Array.isArray(search.data?.items) ? search.data.items : []
+      const rid = items?.[0]?.role_id
+      const v = rid != null ? String(rid).trim() : ""
+      if (v) {
+        if (cacheSec > 0) {
+          try {
+            await redis.setEx(cacheKey, cacheSec, v)
+          } catch {
+            try {
+              await redis.set(cacheKey, v, { EX: cacheSec })
+            } catch {}
+          }
+        }
+        return { ok: true, roleId: v, fromCache: false }
+      }
+    } else {
+      lastErr = search.message || lastErr
+    }
+  } catch (err) {
+    lastErr = `friendApi.request_failed:${err?.message || err}`
+  }
+
+  try {
+    const detail = await requestFriendApi("/friend/detail", { role_id: id })
+    if (detail.ok) {
+      const rid = detail.data?.role_profile?.role_id
+      const v = rid != null ? String(rid).trim() : ""
+      if (v) {
+        if (cacheSec > 0) {
+          try {
+            await redis.setEx(cacheKey, cacheSec, v)
+          } catch {
+            try {
+              await redis.set(cacheKey, v, { EX: cacheSec })
+            } catch {}
+          }
+        }
+        return { ok: true, roleId: v, fromCache: false }
+      }
+    } else {
+      lastErr = lastErr ? `${lastErr};${detail.message || ""}`.replace(/;$/, "") : detail.message || lastErr
+    }
+  } catch (err) {
+    const msg = `friendApi.request_failed:${err?.message || err}`
+    lastErr = lastErr ? `${lastErr};${msg}` : msg
+  }
+
+  return { ok: false, message: lastErr || "friendApi.role_not_found" }
+}
+
+function detailCacheKey(roleId) {
+  const r = String(roleId || "").trim()
+  return `Yz:EndUID:FriendDetail:${r}`
+}
+
+export async function getFriendDetail({ uidOrRoleId, force = false } = {}) {
+  const enable = cfg.friendApi?.enable !== false
+  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+
+  const resolved = await resolveFriendRoleId(uidOrRoleId, { force })
+  if (!resolved.ok || !resolved.roleId) return { ok: false, message: resolved.message || "friendApi.role_not_found" }
+  const roleId = String(resolved.roleId).trim()
+
+  const cacheSec = Math.max(0, toInt(cfg.friendApi?.detailCacheSec, 300))
+  const cacheKey = detailCacheKey(roleId)
+  if (!force && cacheSec > 0) {
+    try {
+      const cached = await redis.get(cacheKey)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        const profile = parsed?.role_profile
+        if (profile && typeof profile === "object") {
+          const chars = Array.isArray(profile.char_data) ? profile.char_data : []
+          return { ok: true, roleId, profile, chars, fromCache: true, url: parsed.url || "" }
+        }
+      }
+    } catch {}
+  }
+
+  const res = await requestFriendApi("/friend/detail", { role_id: roleId })
+  if (!res.ok) return { ok: false, message: res.message, url: res.url }
+
+  const profile = res.data?.role_profile
+  if (!profile || typeof profile !== "object") return { ok: false, message: "friendApi.missing_role_profile", url: res.url }
+  const chars = Array.isArray(profile.char_data) ? profile.char_data : []
+
+  if (cacheSec > 0) {
+    const payload = { updatedAt: Date.now(), url: res.url, role_profile: profile }
+    try {
+      await redis.setEx(cacheKey, cacheSec, JSON.stringify(payload))
+    } catch {
+      try {
+        await redis.set(cacheKey, JSON.stringify(payload), { EX: cacheSec })
+      } catch {}
+    }
+  }
+
+  return { ok: true, roleId, profile, chars, fromCache: false, url: res.url }
+}
+
+export async function getFriendCharPanel({ roleId, templateId, advanced = false, force = false } = {}) {
+  const enable = cfg.friendApi?.enable !== false
+  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  const r0 = String(roleId || "").trim()
+  const t = String(templateId || "").trim()
+  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  if (!r0 || !t) return { ok: false, message: "friendApi.missing_role_or_template" }
+
+  const resolved = await resolveFriendRoleId(r0)
+  if (!resolved.ok || !resolved.roleId) return { ok: false, message: resolved.message || "friendApi.role_not_found" }
+  const r = String(resolved.roleId).trim()
+
+  const cacheSec = Math.max(0, toInt(cfg.friendApi?.cacheSec, 120))
+  const cacheKey = panelCacheKey(r, t, { advanced })
+
+  if (!force && cacheSec > 0) {
+    try {
+      const cached = await redis.get(cacheKey)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (parsed?.panel && typeof parsed.panel === "object") {
+          return {
+            ok: true,
+            panel: parsed.panel,
+            charMeta: parsed.charMeta && typeof parsed.charMeta === "object" ? parsed.charMeta : null,
+            fromCache: true,
+            url: parsed.url || "",
+            roleId: r,
+          }
+        }
+      }
+    } catch {}
+  }
+
+  const advancedWanted = advanced || cfg.friendApi?.useAdvancedEndpoint
+  const res = await requestCharWithFallback({ roleId: r, templateId: t, advancedWanted })
+  if (!res.ok) return { ok: false, message: res.message, url: res.url }
+
+  if (res.data?.found === false) {
+    return {
+      ok: false,
+      message: "friendApi.char_not_found",
+      url: res.url,
+      availableTemplateIds: Array.isArray(res.data?.available_template_ids) ? res.data.available_template_ids : [],
+    }
+  }
+
+  const panel = res.data?.panel
+  if (!panel || typeof panel !== "object") return { ok: false, message: "friendApi.missing_panel", url: res.url }
+
+  const charMeta = buildCharMeta(res.data)
+
+  if (cacheSec > 0) {
+    try {
+      await redis.setEx(cacheKey, cacheSec, JSON.stringify({ updatedAt: Date.now(), url: res.url, panel, charMeta }))
+    } catch {
+      try {
+        await redis.set(cacheKey, JSON.stringify({ updatedAt: Date.now(), url: res.url, panel, charMeta }), { EX: cacheSec })
+      } catch {}
+    }
+  }
+
+  return { ok: true, panel, charMeta, fromCache: false, url: res.url, roleId: r }
+}
+
+export async function getFriendCharComputed({ roleId, templateId, advanced = false, force = false } = {}) {
+  const enable = cfg.friendApi?.enable !== false
+  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  const r0 = String(roleId || "").trim()
+  const t = String(templateId || "").trim()
+  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  if (!r0 || !t) return { ok: false, message: "friendApi.missing_role_or_template" }
+
+  const resolved = await resolveFriendRoleId(r0)
+  if (!resolved.ok || !resolved.roleId) return { ok: false, message: resolved.message || "friendApi.role_not_found" }
+  const r = String(resolved.roleId).trim()
+
+  return await getFriendCharComputedByRoleId({ roleId: r, templateId: t, advanced, force })
+}
+
+/**
+ * Like getFriendCharComputed, but `roleId` is already the Friend API role_id.
+ * This avoids an extra `/friend/search?uid=...` lookup and reduces intermittent failures.
+ */
+export async function getFriendCharComputedByRoleId({ roleId, templateId, advanced = false, force = false } = {}) {
+  const enable = cfg.friendApi?.enable !== false
+  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  const r = String(roleId || "").trim()
+  const t = String(templateId || "").trim()
+  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  if (!r || !t) return { ok: false, message: "friendApi.missing_role_or_template" }
+
+  const cacheSec = Math.max(0, toInt(cfg.friendApi?.cacheSec, 120))
+  const cacheKey = computedCacheKey(r, t, { advanced })
+
+  const staleCacheSec = Math.max(0, toInt(cfg.friendApi?.staleCacheSec, 86400))
+  const staleKey = staleComputedCacheKey(r, t, { advanced })
+
+  async function readStale(fallbackError) {
+    if (force || staleCacheSec <= 0) return null
+    try {
+      const cached = await redis.get(staleKey)
+      if (!cached) return null
+      const parsed = JSON.parse(cached)
+      if (!parsed?.panel || typeof parsed.panel !== "object") return null
+      return {
+        ok: true,
+        panel: parsed.panel,
+        equipMods: Array.isArray(parsed.equipMods) ? parsed.equipMods : [],
+        attrNameMap: parsed.attrNameMap && typeof parsed.attrNameMap === "object" ? parsed.attrNameMap : {},
+        charMeta: parsed.charMeta && typeof parsed.charMeta === "object" ? parsed.charMeta : null,
+        weaponTerms: Array.isArray(parsed.weaponTerms) ? parsed.weaponTerms : [],
+        charView: parsed.charView && typeof parsed.charView === "object" ? parsed.charView : null,
+        fromCache: true,
+        stale: true,
+        error: String(fallbackError || parsed.error || ""),
+        url: parsed.url || "",
+        roleId: r,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  if (!force && cacheSec > 0) {
+    try {
+      const cached = await redis.get(cacheKey)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (parsed?.panel && typeof parsed.panel === "object") {
+          return {
+            ok: true,
+            panel: parsed.panel,
+            equipMods: Array.isArray(parsed.equipMods) ? parsed.equipMods : [],
+            attrNameMap: parsed.attrNameMap && typeof parsed.attrNameMap === "object" ? parsed.attrNameMap : {},
+            charMeta: parsed.charMeta && typeof parsed.charMeta === "object" ? parsed.charMeta : null,
+            weaponTerms: Array.isArray(parsed.weaponTerms) ? parsed.weaponTerms : [],
+            charView: parsed.charView && typeof parsed.charView === "object" ? parsed.charView : null,
+            fromCache: true,
+            url: parsed.url || "",
+            roleId: r,
+          }
+        }
+      }
+    } catch {}
+  }
+
+  const advancedWanted = advanced || cfg.friendApi?.useAdvancedEndpoint
+  const res = await requestCharWithFallback({ roleId: r, templateId: t, advancedWanted })
+  if (!res.ok) {
+    const stale = await readStale(res.message)
+    if (stale) return stale
+    return { ok: false, message: res.message, url: res.url }
+  }
+
+  if (res.data?.found === false) {
+    return {
+      ok: false,
+      message: "friendApi.char_not_found",
+      url: res.url,
+      availableTemplateIds: Array.isArray(res.data?.available_template_ids) ? res.data.available_template_ids : [],
+    }
+  }
+
+  const panel = res.data?.panel
+  if (!panel || typeof panel !== "object") {
+    const stale = await readStale("friendApi.missing_panel")
+    if (stale) return stale
+    return { ok: false, message: "friendApi.missing_panel", url: res.url }
+  }
+
+  const charMeta = buildCharMeta(res.data)
+  const weaponTerms = buildWeaponTerms(res.data)
+  const charView = buildCharView(res.data)
+
+  const processed = res.data?.processed && typeof res.data.processed === "object" ? res.data.processed : {}
+  const runtimeMods = Array.isArray(processed.runtime_modifiers) ? processed.runtime_modifiers : []
+  const equipMods = runtimeMods
+    .filter(m => m && (m.source === "equip_base" || m.source === "equip_display") && m.slot !== undefined)
+    .map(m => ({
+      source: String(m.source || ""),
+      item_id: String(m.item_id || ""),
+      slot: toInt(m.slot, -1),
+      attr_index: toInt(m.attr_index, -1),
+      attr_type: toInt(m.attr_type, 0),
+      attr_name: String(m.attr_name || ""),
+      value: toNumber(m.value, 0),
+      mode: String(m.mode || ""),
+    }))
+    .filter(m => m.slot >= 0)
+
+  const attrNameMap = {}
+  const aggregated = Array.isArray(processed.aggregated_attributes) ? processed.aggregated_attributes : []
+  for (const a of aggregated) {
+    const at = a?.attr_type
+    const id = toInt(at?.id, -1)
+    if (id < 0) continue
+    const cn = String(at?.name_cn || "").trim()
+    const en = String(at?.name || at?.raw_name || "").trim()
+    if (cn && /[\u4e00-\u9fff]/.test(cn)) attrNameMap[id] = cn
+    else if (en) attrNameMap[id] = en
+  }
+
+  if (cacheSec > 0) {
+    const payload = {
+      updatedAt: Date.now(),
+      url: res.url,
+      panel,
+      equipMods,
+      attrNameMap,
+      charMeta,
+      weaponTerms,
+      charView,
+    }
+    try {
+      await redis.setEx(cacheKey, cacheSec, JSON.stringify(payload))
+    } catch {
+      try {
+        await redis.set(cacheKey, JSON.stringify(payload), { EX: cacheSec })
+      } catch {}
+    }
+  }
+
+  if (staleCacheSec > 0) {
+    const payload = {
+      updatedAt: Date.now(),
+      url: res.url,
+      panel,
+      equipMods,
+      attrNameMap,
+      charMeta,
+      weaponTerms,
+      charView,
+    }
+    try {
+      await redis.setEx(staleKey, staleCacheSec, JSON.stringify(payload))
+    } catch {
+      try {
+        await redis.set(staleKey, JSON.stringify(payload), { EX: staleCacheSec })
+      } catch {}
+    }
+  }
+
+  return { ok: true, panel, equipMods, attrNameMap, charMeta, weaponTerms, charView, fromCache: false, url: res.url, roleId: r }
+}
+
+export function buildPanelStatsFromFriendPanel(panel) {
+  // Keep this function pure: input panel -> stats fragments
+  const p = panel && typeof panel === "object" ? panel : {}
+  const summary = p.summary && typeof p.summary === "object" ? p.summary : {}
+  const ability = p.ability && typeof p.ability === "object" ? p.ability : {}
+  const contrib = ability.contributions && typeof ability.contributions === "object" ? ability.contributions : {}
+  const attack = p.attack_breakdown && typeof p.attack_breakdown === "object" ? p.attack_breakdown : {}
+  const health = p.health_breakdown && typeof p.health_breakdown === "object" ? p.health_breakdown : {}
+  const defense = p.defense_breakdown && typeof p.defense_breakdown === "object" ? p.defense_breakdown : {}
+
+  const toFloorInt = (value, def = 0) => {
+    const n = Number(value)
+    return Number.isFinite(n) ? Math.floor(n) : def
+  }
+
+  const fmtPct = (value, digits = 0) => {
+    const n = Number(value)
+    if (!Number.isFinite(n)) return ""
+    const abs = Math.abs(n)
+    const s = Number.isInteger(abs) ? String(abs) : abs.toFixed(Math.max(0, toInt(digits, 0)))
+    return (n < 0 ? "-" : "") + s + "%"
+  }
+
+  const fmtBonusPct = (value, digits = 0) => {
+    const n = Number(value)
+    if (!Number.isFinite(n)) return ""
+    const s = fmtPct(n, digits)
+    if (!s) return ""
+    return n > 0 && s[0] !== "-" ? `+${s}` : s
+  }
+
+  const hpValue = toInt(summary.hp, toInt(health.hp_runtime, 0))
+  const hpBase = toInt(health.char_hp, hpValue)
+  const hpPlus = Math.max(0, hpValue - hpBase)
+
+  const atkFinal = toNumber(attack.final_attack_runtime, toNumber(summary.atk, 0))
+  const atkValue = Math.round(atkFinal)
+  const atkBase = Math.round(toNumber(attack.total_before_ability, atkValue))
+  const atkPlus = atkValue - atkBase
+
+  const defValue = toInt(summary.def, toInt(defense.defense, 0))
+
+  // The UI uses the `speed` slot; Friend API exposes `agility` in panel.summary.
+  // Use ability contributions when available for a base/plus split.
+  const agiFinal = toInt(summary.agility, toFloorInt(contrib?.agility?.final, 0))
+  const agiBase = toFloorInt(contrib?.agility?.base, agiFinal)
+  const agiPlus = agiFinal - agiBase
+
+  const strFinal = toInt(summary.strength, toFloorInt(contrib?.strength?.final, 0))
+  const strBase = toFloorInt(contrib?.strength?.base, strFinal)
+  const strPlus = strFinal - strBase
+
+  const wisFinal = toInt(summary.wisdom, toFloorInt(contrib?.wisdom?.final, 0))
+  const wisBase = toFloorInt(contrib?.wisdom?.base, wisFinal)
+  const wisPlus = wisFinal - wisBase
+
+  const willFinal = toInt(summary.will, toFloorInt(contrib?.will?.final, 0))
+  const willBase = toFloorInt(contrib?.will?.base, willFinal)
+  const willPlus = willFinal - willBase
+
+  const pres = toNumber(summary.physical_resist, Number.NaN)
+  const sres = toNumber(summary.spell_resist, Number.NaN)
+  const healTaken = toNumber(summary.heal_taken_bonus_pct, Number.NaN)
+
+  const critRate = toNumber(summary.critical_rate_pct, Number.NaN)
+  const critDmg = toNumber(summary.critical_damage_pct, Number.NaN)
+
+  return {
+    hp: {
+      value: hpValue ? String(hpValue) : "",
+      base: hpBase ? String(hpBase) : "",
+      plus: String(hpPlus),
+    },
+    atk: {
+      value: atkValue ? String(atkValue) : "",
+      base: atkBase ? String(atkBase) : "",
+      plus: String(atkPlus),
+    },
+    def: {
+      value: defValue ? String(defValue) : "",
+      base: defValue ? String(defValue) : "",
+      plus: "0",
+    },
+    speed: {
+      value: agiFinal ? String(agiFinal) : "",
+      base: agiFinal ? String(agiBase) : "",
+      plus: String(agiPlus),
+    },
+    str: {
+      value: strFinal ? String(strFinal) : "",
+      base: strFinal ? String(strBase) : "",
+      plus: String(strPlus),
+    },
+    wis: {
+      value: wisFinal ? String(wisFinal) : "",
+      base: wisFinal ? String(wisBase) : "",
+      plus: String(wisPlus),
+    },
+    will: {
+      value: willFinal ? String(willFinal) : "",
+      base: willFinal ? String(willBase) : "",
+      plus: String(willPlus),
+    },
+    cpct: {
+      value: Number.isFinite(critRate) ? `${critRate.toFixed(1)}%` : "",
+      base: Number.isFinite(critRate) ? `${critRate.toFixed(1)}%` : "",
+      plus: "0",
+    },
+    cdmg: {
+      value: Number.isFinite(critDmg) ? `${critDmg.toFixed(1)}%` : "",
+      base: Number.isFinite(critDmg) ? `${critDmg.toFixed(1)}%` : "",
+      plus: "0",
+    },
+    pres: {
+      value: Number.isFinite(pres) ? fmtPct(pres, 0) : "",
+      base: Number.isFinite(pres) ? fmtPct(pres, 0) : "",
+      plus: "0",
+    },
+    sres: {
+      value: Number.isFinite(sres) ? fmtPct(sres, 0) : "",
+      base: Number.isFinite(sres) ? fmtPct(sres, 0) : "",
+      plus: "0",
+    },
+    heal: {
+      value: Number.isFinite(healTaken) ? fmtBonusPct(healTaken, 1) : "",
+      base: Number.isFinite(healTaken) ? fmtBonusPct(healTaken, 1) : "",
+      plus: "0",
+    },
+  }
+}
+
+export async function getFriendApiHealth({ timeoutMs = 1500 } = {}) {
+  const enable = cfg.friendApi?.enable !== false
+  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+
+  const res = await requestFriendApi("/health", null, { timeoutMs })
+  if (!res.ok) return { ok: false, message: res.message, url: res.url }
+  return { ok: true, data: res.data, url: res.url }
+}

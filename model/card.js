@@ -16,6 +16,7 @@ import { updateAliasMapFromChars } from "./alias.js"
 
 // 保留历史 key 命名空间：避免老用户缓存失效或迁移困难。
 const KEY_CARD_DETAIL = (userId, uid) => `Yz:EndUID:CardDetail:${userId}:${uid}`
+const KEY_CARD_DETAIL_STALE = (userId, uid) => `Yz:EndUID:CardDetailStale:${userId}:${uid}`
 
 function safeJsonParse(text, fallback) {
   try {
@@ -27,13 +28,31 @@ function safeJsonParse(text, fallback) {
 
 export async function getCardDetailForUser(userId, { force = false } = {}) {
   const { account } = await getActiveAccount(userId)
-  if (!account?.cred || !account?.uid) {
+  if (!account?.uid) {
+    return { ok: false, message: "[终末地] 未绑定账号，请先私聊 #zmd绑定 / #zmd登录" }
+  }
+  if (!account?.cred) {
+    if (account?.uidOnly) {
+      return { ok: false, message: "[终末地] 当前账号仅绑定UID（仅面板），不支持该功能；如需完整功能请私聊 #zmd绑定<cred|token>" }
+    }
     return { ok: false, message: "[终末地] 未绑定账号，请先私聊 #zmd绑定 / #zmd登录" }
   }
 
   const uid = String(account.uid)
   const cacheSec = Math.max(0, Number(cfg.card?.cacheSec) || 0)
   const cacheKey = KEY_CARD_DETAIL(userId, uid)
+
+  // A longer-lived cache used as fallback when live requests fail.
+  const staleCacheSec = Math.max(0, Number(cfg.card?.staleCacheSec) || 0)
+  const staleKey = KEY_CARD_DETAIL_STALE(userId, uid)
+  let staleRes = null
+  if (staleCacheSec > 0) {
+    try {
+      const cached = await redis.get(staleKey)
+      const parsed = cached ? safeJsonParse(cached, null) : null
+      if (parsed?.res?.code === 0) staleRes = parsed.res
+    } catch {}
+  }
 
   // 缓存按 QQ userId + 游戏 UID 作为 key。
   if (!force && cacheSec > 0) {
@@ -57,11 +76,38 @@ export async function getCardDetailForUser(userId, { force = false } = {}) {
   try {
     res = await getCardDetail(account.cred, { uid, serverId: account.serverId || "1", userId: sklandUserId })
   } catch (err) {
+    if (!force && staleRes) {
+      return {
+        ok: true,
+        account,
+        res: staleRes,
+        fromCache: true,
+        stale: true,
+        error: `[终末地] 获取卡片详情异常：${err?.message || err}`,
+      }
+    }
     return { ok: false, message: `[终末地] 获取卡片详情异常：${err?.message || err}` }
   }
 
-  if (!res) return { ok: false, message: "[终末地] 获取卡片详情失败（请求失败）" }
-  if (res.code !== 0) return { ok: false, message: `[终末地] 获取卡片详情失败：${res.message || res.code}` }
+  if (!res) {
+    if (!force && staleRes) {
+      return { ok: true, account, res: staleRes, fromCache: true, stale: true, error: "[终末地] 获取卡片详情失败（请求失败）" }
+    }
+    return { ok: false, message: "[终末地] 获取卡片详情失败（请求失败）" }
+  }
+  if (res.code !== 0) {
+    if (!force && staleRes) {
+      return {
+        ok: true,
+        account,
+        res: staleRes,
+        fromCache: true,
+        stale: true,
+        error: `[终末地] 获取卡片详情失败：${res.message || res.code}`,
+      }
+    }
+    return { ok: false, message: `[终末地] 获取卡片详情失败：${res.message || res.code}` }
+  }
 
   // 尽力而为：用最新角色列表刷新别名库（失败不影响主流程）。
   try {
@@ -74,6 +120,16 @@ export async function getCardDetailForUser(userId, { force = false } = {}) {
     } catch {
       try {
         await redis.set(cacheKey, JSON.stringify({ updatedAt: Date.now(), res }), { EX: cacheSec })
+      } catch {}
+    }
+  }
+
+  if (staleCacheSec > 0) {
+    try {
+      await redis.setEx(staleKey, staleCacheSec, JSON.stringify({ updatedAt: Date.now(), res }))
+    } catch {
+      try {
+        await redis.set(staleKey, JSON.stringify({ updatedAt: Date.now(), res }), { EX: staleCacheSec })
       } catch {}
     }
   }

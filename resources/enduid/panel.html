@@ -13,7 +13,19 @@
 <link rel="stylesheet" type="text/css" href="{{_res_path}}skin/character/profile-detail.css"/>
 <style>
   .enduid-panel .main-pic {
-    background-position: center calc(50% + 18px);
+    /* Keep the full illustration visible; allow it to extend beyond the frame. */
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 620px;
+    background-position: center bottom;
+  }
+
+  .enduid-panel .basic {
+    /* Tighten gap between the header art and the equip area. */
+    margin: 0 -15px 8px -10px;
+    height: 500px;
+    overflow: visible;
   }
 
   .enduid-panel .char-lv {
@@ -25,42 +37,60 @@
     display: flex;
     flex-direction: column;
     align-items: flex-end;
+    /* Nudge the whole right-side block down a bit. */
+    top: 28px;
   }
 
   .enduid-panel .char-attr {
     margin-left: auto;
+    margin-top: 6px;
   }
 
-  .enduid-panel .enduid-skills {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    width: 300px;
+  /* Make room for more stat rows. */
+  .enduid-panel .char-attr li {
+    height: 28px;
+    line-height: 28px;
+    font-size: 15px;
   }
 
-  .enduid-panel .enduid-skills .talent-item {
-    flex: 0 0 25%;
+  .enduid-panel .char-attr li .title {
+    width: 70px;
   }
 
-  .enduid-panel .enduid-skills .talent-icon {
-    width: 60px;
-    height: 60px;
-    margin: 0 -5px;
+  .enduid-panel .char-attr li .value {
+    width: 92px;
   }
 
-  .enduid-panel .enduid-skills .talent-icon img,
-  .enduid-panel .enduid-skills .talent-icon .talent-icon-img {
-    width: 52%;
-    height: 52%;
-    margin: -26% 0 0 -26%;
+  .enduid-panel .char-attr li .value2 {
+    width: 84px;
+    padding-top: 3px;
+    font-size: 11px;
   }
 
-  .enduid-panel .enduid-skills .talent-icon strong {
-    width: 22px;
-    height: 18px;
-    line-height: 18px;
-    font-size: 12px;
-    margin-left: -11px;
-    border-radius: 4px;
+  .enduid-panel .char-attr li .value2 span {
+    height: 12px;
+    line-height: 12px;
+  }
+
+  /* Icons for additional character stats. */
+  .enduid-panel .i-str {
+    background-position: -32px 0;
+  }
+
+  .enduid-panel .i-wis {
+    background-position: -64px 0;
+  }
+
+  .enduid-panel .i-will {
+    background-position: -112px 0;
+  }
+
+  .enduid-panel .i-pres {
+    background-position: -192px 0;
+  }
+
+  .enduid-panel .i-sres {
+    background-position: -176px 0;
   }
 
   .enduid-panel .enduid-tags {
@@ -109,6 +139,81 @@
   .artis .item.enduid-equip ul.detail li span.val {
     padding-right: 8px;
   }
+
+  .enduid-panel .artis {
+    margin: 4px -5px 5px;
+    position: relative;
+    z-index: 4;
+  }
+
+  /* Skills: stick to the bottom of the character frame. */
+  .enduid-panel .enduid-skillbar {
+    position: absolute;
+    left: 18px;
+    bottom: 10px;
+    z-index: 3;
+    width: 250px;
+    padding: 0;
+    border-radius: 0;
+    backdrop-filter: none;
+    background: none;
+    box-shadow: none;
+  }
+
+  .enduid-panel .enduid-skillbar .enduid-skills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    align-content: flex-start;
+    gap: 6px;
+    width: 100%;
+    margin: 0;
+  }
+
+  .enduid-panel .enduid-skillbar .enduid-skills .talent-item {
+    flex: 0 0 auto;
+  }
+
+  .enduid-panel .enduid-skillbar .enduid-skills .talent-icon {
+    width: 52px;
+    height: 52px;
+    margin: 0;
+    filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.75));
+  }
+
+  .enduid-panel .enduid-skillbar .enduid-skills .talent-icon img,
+  .enduid-panel .enduid-skillbar .enduid-skills .talent-icon .talent-icon-img {
+    width: 52%;
+    height: 52%;
+    margin: -26% 0 0 -26%;
+  }
+
+  .enduid-panel .enduid-skillbar .enduid-skills .talent-icon strong {
+    width: 22px;
+    height: 18px;
+    line-height: 18px;
+    font-size: 12px;
+    margin-left: -11px;
+    border-radius: 4px;
+  }
+
+  /* Weapon terms: show only existing lines (no placeholders). */
+  .enduid-panel .enduid-weapon .weapon-desc {
+    display: block;
+    height: 100%;
+    padding: 8px 10px;
+    box-sizing: border-box;
+  }
+
+  .enduid-panel .enduid-weapon .enduid-weapon-term {
+    display: block;
+    line-height: 20px;
+    font-size: 12px;
+    color: #d3bc8e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 </style>
 {{/block}}
 
@@ -124,17 +229,6 @@
         <span class="cons cons-n0">突破{{evolvePhase}}</span>
       </div>
 
-      <div class="char-talents enduid-skills">
-        {{each skills skill}}
-        <div class="talent-item">
-          <div class="talent-icon">
-            <div class="talent-icon-img" style="background-image:url({{skill.icon}})"></div>
-            <strong>{{skill.level}}</strong>
-          </div>
-        </div>
-        {{/each}}
-      </div>
-
       <ul class="char-attr">
         {{each stats s}}
         <li>
@@ -143,8 +237,14 @@
           <div class="weight"></div>
           <div class="value">{{s.value || placeholder}}</div>
           <div class="value2">
-            <span class="base">{{s.base || placeholder}}</span>
-            <span class="plus">{{if s.plus && s.plus !== placeholder}}+{{s.plus}}{{else}}{{s.plus || placeholder}}{{/if}}</span>
+            <span class="base">
+              {{if s.base && s.base !== placeholder && ((s.plus && s.plus !== placeholder && s.plus !== "0") || (s.value && s.value !== placeholder && s.value !== s.base))}}{{s.base}}{{/if}}
+            </span>
+            <span class="plus">
+              {{if s.plus && s.plus !== placeholder && s.plus !== "0"}}
+              {{if ('' + s.plus).indexOf('-') === 0}}{{s.plus}}{{else}}+{{s.plus}}{{/if}}
+              {{/if}}
+            </span>
           </div>
         </li>
         {{/each}}
@@ -169,10 +269,21 @@
       </div>
     </div>
 
-    <div class="data-info">
-      <span>{{subtitle}}</span>
-      {{if time}}<span class="time">{{time}}</span>{{/if}}
+    {{if skills && skills.length}}
+    <div class="enduid-skillbar">
+      <div class="enduid-skills">
+        {{each skills skill}}
+        <div class="talent-item">
+          <div class="talent-icon">
+            <div class="talent-icon-img" style="background-image:url({{skill.icon}})"></div>
+            <strong>{{skill.level}}</strong>
+          </div>
+        </div>
+        {{/each}}
+      </div>
     </div>
+    {{/if}}
+
   </div>
 
   <div class="artis">
@@ -195,7 +306,15 @@
         </div>
       </div>
       <div class="weapon-desc-cont">
-        <div class="weapon-desc">{{if weapon && weapon.desc}}{{weapon.desc}}{{else}}{{placeholder}}{{/if}}</div>
+        <div class="weapon-desc">
+          {{if weapon && weapon.terms && weapon.terms.length}}
+          {{each weapon.terms t}}
+          <div class="enduid-weapon-term">{{t}}</div>
+          {{/each}}
+          {{else if weapon && weapon.desc}}
+          {{weapon.desc}}
+          {{/if}}
+        </div>
       </div>
     </div>
 
@@ -207,18 +326,26 @@
         {{else}}
         <div class="img"></div>
         {{/if}}
-        <span>{{if equip.level}}+{{equip.level}}{{else}}{{placeholder}}{{/if}}</span>
+        {{if equip.level && equip.slotName !== "战术道具"}}
+        <span>+{{equip.level}}</span>
+        {{/if}}
       </div>
       <div class="head">
         <strong>{{equip.name || placeholder}}</strong>
         <span>{{equip.slotName || placeholder}}</span>
       </div>
+      {{if equip.detail && (equip.detail.main || (equip.detail.subs && equip.detail.subs.length))}}
       <ul class="detail attr">
-        <li class="arti-main"><span class="title">属性</span><span class="val">{{equip.detail.main || placeholder}}</span></li>
-        {{each equip.detail.subs sub idx}}
-        <li><span class="title">词条{{idx + 1}}</span><span class="val">{{sub || placeholder}}</span></li>
+        {{if equip.detail.main}}
+        <li class="arti-main"><span class="title">{{equip.detail.main.name}}</span><span class="val">{{equip.detail.main.value}}</span></li>
+        {{/if}}
+        {{each equip.detail.subs sub}}
+        {{if sub && sub.name}}
+        <li><span class="title">{{sub.name}}</span><span class="val">{{sub.value}}</span></li>
+        {{/if}}
         {{/each}}
       </ul>
+      {{/if}}
     </div>
     {{/each}}
   </div>
