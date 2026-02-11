@@ -28,10 +28,20 @@ import {
 } from "./store.js"
 import { OAUTH_API } from "./skland/api.js"
 
-import { PLUGIN_DATA_DIR, PLUGIN_RESOURCES_DIR } from "./pluginMeta.js"
+import { LEGACY_PLUGIN_DATA_DIR, PLUGIN_DATA_DIR, PLUGIN_RESOURCES_DIR } from "./pluginMeta.js"
 
 const DATA_DIR = path.join(PLUGIN_DATA_DIR, "gachalog")
+const LEGACY_DATA_DIR = path.join(LEGACY_PLUGIN_DATA_DIR, "gachalog")
 const RES_DIR = PLUGIN_RESOURCES_DIR
+
+function gachaExportFilePaths(roleId) {
+  const rid = String(roleId ?? "").trim()
+  const name = `${rid}.json`
+  return {
+    filePath: path.join(DATA_DIR, name),
+    legacyPath: path.join(LEGACY_DATA_DIR, name),
+  }
+}
 
 const BINDING_APP_CODE = "be36d44aa36bfb5b"
 const BINDING_LIST_URL = "https://binding-api-account-prod.hypergryph.com/account/binding/v1/binding_list"
@@ -464,14 +474,27 @@ async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {}, 
 }
 
 async function loadGachaExport(roleId) {
-  const fp = path.join(DATA_DIR, `${roleId}.json`)
+  const rid = String(roleId ?? "").trim()
+  if (!rid) return null
+  const { filePath, legacyPath } = gachaExportFilePaths(rid)
   try {
-    const text = await fs.readFile(fp, "utf8")
+    let text = ""
+    let fromLegacy = false
+    try {
+      text = await fs.readFile(filePath, "utf8")
+    } catch {
+      text = await fs.readFile(legacyPath, "utf8")
+      fromLegacy = true
+    }
     const data = safeJsonParse(text, null)
     if (!data || typeof data !== "object") return null
     if (!Array.isArray(data.charList)) data.charList = []
     if (!Array.isArray(data.weaponList)) data.weaponList = []
     if (!data.info || typeof data.info !== "object") data.info = {}
+
+    // Best-effort: migrate legacy cache to the new bot-level data dir.
+    if (fromLegacy) saveGachaExport(rid, data).catch(() => {})
+
     return data
   } catch {
     return null
@@ -1012,15 +1035,26 @@ export async function exportGachaLogsForUser(userId) {
   const { ok, message, roleId } = await requireActiveRoleId(userId)
   if (!ok) return { ok: false, message }
 
-  const filePath = path.join(DATA_DIR, `${roleId}.json`)
-  if (!fsSync.existsSync(filePath)) {
+  const { filePath, legacyPath } = gachaExportFilePaths(roleId)
+  let actualPath = filePath
+  if (!fsSync.existsSync(actualPath)) actualPath = legacyPath
+  if (!fsSync.existsSync(actualPath)) {
     return { ok: false, message: "[终末地] 未找到抽卡记录，请先使用：#zmd更新抽卡记录" }
+  }
+
+  // Best-effort: migrate legacy cache so exports live under bot data dir.
+  if (actualPath === legacyPath && !fsSync.existsSync(filePath)) {
+    try {
+      await fs.mkdir(DATA_DIR, { recursive: true })
+      await fs.copyFile(legacyPath, filePath)
+      actualPath = filePath
+    } catch {}
   }
 
   return {
     ok: true,
     roleId,
-    filePath,
+    filePath: actualPath,
     fileName: `zmd_gacha_${roleId}.json`,
   }
 }
@@ -1029,15 +1063,17 @@ export async function deleteGachaLogsForUser(userId) {
   const { ok, message, roleId } = await requireActiveRoleId(userId)
   if (!ok) return { ok: false, message }
 
-  const filePath = path.join(DATA_DIR, `${roleId}.json`)
-  if (!fsSync.existsSync(filePath)) {
+  const { filePath, legacyPath } = gachaExportFilePaths(roleId)
+  let actualPath = filePath
+  if (!fsSync.existsSync(actualPath) && fsSync.existsSync(legacyPath)) actualPath = legacyPath
+  if (!fsSync.existsSync(actualPath)) {
     return { ok: false, message: "[终末地] 未找到抽卡记录，无需删除" }
   }
 
-  await fs.mkdir(DATA_DIR, { recursive: true })
-  const backupPath = `${filePath}.bak`
-  await fs.copyFile(filePath, backupPath)
-  await fs.unlink(filePath)
+  await fs.mkdir(path.dirname(actualPath), { recursive: true })
+  const backupPath = `${actualPath}.bak`
+  await fs.copyFile(actualPath, backupPath)
+  await fs.unlink(actualPath)
 
   return { ok: true, roleId, backupPath }
 }

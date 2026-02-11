@@ -4,10 +4,11 @@ import path from "node:path"
 
 import fetch from "node-fetch"
 
-import { PLUGIN_DATA_DIR, PLUGIN_RESOURCES_DIR } from "./pluginMeta.js"
+import { LEGACY_PLUGIN_DATA_DIR, PLUGIN_DATA_DIR, PLUGIN_RESOURCES_DIR } from "./pluginMeta.js"
 import { ensureListData } from "./wiki/fetch.js"
 
 const GACHA_DATA_DIR = path.join(PLUGIN_DATA_DIR, "gachalog")
+const LEGACY_GACHA_DATA_DIR = path.join(LEGACY_PLUGIN_DATA_DIR, "gachalog")
 const WEAPON_ICON_DIR = path.join(PLUGIN_RESOURCES_DIR, "endfield", "itemiconbig")
 
 function sleep(ms) {
@@ -63,10 +64,27 @@ async function loadGachaExport(roleId) {
   const rid = String(roleId || "").trim()
   if (!rid) return null
   const fp = path.join(GACHA_DATA_DIR, `${rid}.json`)
+  const legacyFp = path.join(LEGACY_GACHA_DATA_DIR, `${rid}.json`)
   try {
-    const text = await fs.readFile(fp, "utf8")
+    let text = ""
+    let fromLegacy = false
+    try {
+      text = await fs.readFile(fp, "utf8")
+    } catch {
+      text = await fs.readFile(legacyFp, "utf8")
+      fromLegacy = true
+    }
     const data = safeJsonParse(text, null)
-    return data && typeof data === "object" ? data : null
+    if (!data || typeof data !== "object") return null
+
+    // Best-effort: migrate legacy cache so other features can find it.
+    if (fromLegacy && !fsSync.existsSync(fp)) {
+      fs.mkdir(GACHA_DATA_DIR, { recursive: true })
+        .then(() => fs.copyFile(legacyFp, fp))
+        .catch(() => {})
+    }
+
+    return data
   } catch {
     return null
   }
@@ -86,12 +104,17 @@ function collectWeaponsFromExport(exportData) {
 
 export function listLocalGachaRoleIds() {
   try {
-    if (!fsSync.existsSync(GACHA_DATA_DIR)) return []
-    const files = fsSync.readdirSync(GACHA_DATA_DIR)
-    return files
-      .filter(f => f.endsWith(".json"))
-      .map(f => f.replace(/\.json$/i, "").trim())
-      .filter(id => /^\d{5,}$/.test(id))
+    const out = new Set()
+    for (const dir of [GACHA_DATA_DIR, LEGACY_GACHA_DATA_DIR]) {
+      if (!fsSync.existsSync(dir)) continue
+      const files = fsSync.readdirSync(dir)
+      for (const f of files) {
+        if (!f.endsWith(".json")) continue
+        const id = f.replace(/\.json$/i, "").trim()
+        if (/^\d{5,}$/.test(id)) out.add(id)
+      }
+    }
+    return [...out]
   } catch {
     return []
   }

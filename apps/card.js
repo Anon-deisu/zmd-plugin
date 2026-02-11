@@ -131,7 +131,9 @@ export class card extends plugin {
     const name = base.name || result.account.nickname || result.account.uid
     const uid = base.roleId || result.account.uid
 
-    await e.reply(`${GAME_TITLE} 刷新成功：${name} UID:${uid}`, true)
+    const okText = result.stale ? "刷新失败（已使用缓存）" : "刷新成功"
+    const tip = result.stale && result.error ? `\n${result.error}` : ""
+    await e.reply(`${GAME_TITLE} ${okText}：${name} UID:${uid}${tip}`, true)
     return true
   }
 

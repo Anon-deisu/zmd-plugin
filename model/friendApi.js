@@ -7,8 +7,85 @@
  * Used to补全「面板」中的数值拆解（HP/ATK/DEF/暴击等）。
  */
 import fetch from "node-fetch"
+import fsSync from "node:fs"
+import fs from "node:fs/promises"
+import path from "node:path"
 
 import cfg from "./config.js"
+import { LEGACY_PLUGIN_DATA_DIR, PLUGIN_DATA_DIR } from "./pluginMeta.js"
+
+const FILE_DATA_DIR = path.join(PLUGIN_DATA_DIR, "friendApi")
+const FILE_DATA_DIR_LEGACY = path.join(LEGACY_PLUGIN_DATA_DIR, "friendApi")
+const FILE_ROLEID_DIR = path.join(FILE_DATA_DIR, "roleId")
+const FILE_DETAIL_DIR = path.join(FILE_DATA_DIR, "detail")
+const FILE_COMPUTED_DIR = path.join(FILE_DATA_DIR, "computed")
+
+const FILE_ROLEID_DIR_LEGACY = path.join(FILE_DATA_DIR_LEGACY, "roleId")
+const FILE_DETAIL_DIR_LEGACY = path.join(FILE_DATA_DIR_LEGACY, "detail")
+const FILE_COMPUTED_DIR_LEGACY = path.join(FILE_DATA_DIR_LEGACY, "computed")
+
+function safeJsonParse(text, fallback) {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return fallback
+  }
+}
+
+function sanitizeFilename(name) {
+  return String(name || "")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+async function saveJson(filePath, data) {
+  try {
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.writeFile(filePath, JSON.stringify(data), "utf8")
+  } catch {}
+}
+
+async function loadJson(filePath) {
+  if (!filePath || !fsSync.existsSync(filePath)) return null
+  try {
+    const raw = await fs.readFile(filePath, "utf8")
+    const data = safeJsonParse(raw, null)
+    return data && typeof data === "object" ? data : null
+  } catch {
+    return null
+  }
+}
+
+function roleIdCacheFilePaths(uid) {
+  const u = sanitizeFilename(uid)
+  const name = `${u}.json`
+  return {
+    filePath: path.join(FILE_ROLEID_DIR, name),
+    legacyPath: path.join(FILE_ROLEID_DIR_LEGACY, name),
+  }
+}
+
+function detailCacheFilePaths(roleId) {
+  const r = sanitizeFilename(roleId)
+  const name = `${r}.json`
+  return {
+    filePath: path.join(FILE_DETAIL_DIR, name),
+    legacyPath: path.join(FILE_DETAIL_DIR_LEGACY, name),
+  }
+}
+
+function computedCacheFilePaths(roleId, templateId, { advanced } = {}) {
+  const r = sanitizeFilename(roleId)
+  const t = sanitizeFilename(templateId)
+  const a = advanced ? 1 : 0
+  const name = `${r}_${t}_${a}.json`
+  return {
+    filePath: path.join(FILE_COMPUTED_DIR, name),
+    legacyPath: path.join(FILE_COMPUTED_DIR_LEGACY, name),
+  }
+}
 
 function normalizeBaseUrl(raw) {
   const u = String(raw || "").trim()
@@ -291,6 +368,8 @@ export async function resolveFriendRoleId(uidOrRoleId, { force = false } = {}) {
   const id = String(uidOrRoleId || "").trim()
   if (!id) return { ok: false, message: "friendApi.missing_uid" }
 
+  const { filePath: roleIdFilePath, legacyPath: roleIdLegacyPath } = roleIdCacheFilePaths(id)
+
   const enable = cfg.friendApi?.enable !== false
   const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
   if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
@@ -302,7 +381,27 @@ export async function resolveFriendRoleId(uidOrRoleId, { force = false } = {}) {
     try {
       const cached = await redis.get(cacheKey)
       const v = String(cached || "").trim()
-      if (v) return { ok: true, roleId: v, fromCache: true }
+      if (v) {
+        // Best-effort: persist to local disk so it survives Redis flush.
+        saveJson(roleIdFilePath, { updatedAt: Date.now(), uid: id, roleId: v }).catch(() => {})
+        return { ok: true, roleId: v, fromCache: true }
+      }
+    } catch {}
+  }
+
+  if (!force) {
+    try {
+      let local = await loadJson(roleIdFilePath)
+      let fromLegacy = false
+      if (!local) {
+        local = await loadJson(roleIdLegacyPath)
+        fromLegacy = !!local
+      }
+      const v = String(local?.roleId || local?.role_id || "").trim()
+      if (v) {
+        if (fromLegacy) saveJson(roleIdFilePath, { updatedAt: Number(local?.updatedAt) || Date.now(), uid: id, roleId: v }).catch(() => {})
+        return { ok: true, roleId: v, fromCache: true, fromFile: true }
+      }
     } catch {}
   }
 
@@ -328,6 +427,7 @@ export async function resolveFriendRoleId(uidOrRoleId, { force = false } = {}) {
             } catch {}
           }
         }
+        saveJson(roleIdFilePath, { updatedAt: Date.now(), uid: id, roleId: v }).catch(() => {})
         return { ok: true, roleId: v, fromCache: false }
       }
     } else {
@@ -352,6 +452,7 @@ export async function resolveFriendRoleId(uidOrRoleId, { force = false } = {}) {
             } catch {}
           }
         }
+        saveJson(roleIdFilePath, { updatedAt: Date.now(), uid: id, roleId: v }).catch(() => {})
         return { ok: true, roleId: v, fromCache: false }
       }
     } else {
@@ -361,6 +462,27 @@ export async function resolveFriendRoleId(uidOrRoleId, { force = false } = {}) {
     const msg = `friendApi.request_failed:${err?.message || err}`
     lastErr = lastErr ? `${lastErr};${msg}` : msg
   }
+
+  // Fallback: use cached mapping when Friend API is down.
+  try {
+    const cached = await redis.get(cacheKey)
+    const v = String(cached || "").trim()
+    if (v) return { ok: true, roleId: v, fromCache: true, stale: true }
+  } catch {}
+
+  try {
+    let local = await loadJson(roleIdFilePath)
+    let fromLegacy = false
+    if (!local) {
+      local = await loadJson(roleIdLegacyPath)
+      fromLegacy = !!local
+    }
+    const v = String(local?.roleId || local?.role_id || "").trim()
+    if (v) {
+      if (fromLegacy) saveJson(roleIdFilePath, { updatedAt: Number(local?.updatedAt) || Date.now(), uid: id, roleId: v }).catch(() => {})
+      return { ok: true, roleId: v, fromCache: true, fromFile: true, stale: true }
+    }
+  } catch {}
 
   return { ok: false, message: lastErr || "friendApi.role_not_found" }
 }
@@ -379,16 +501,21 @@ export async function getFriendDetail({ uidOrRoleId, force = false } = {}) {
   if (!resolved.ok || !resolved.roleId) return { ok: false, message: resolved.message || "friendApi.role_not_found" }
   const roleId = String(resolved.roleId).trim()
 
+  const { filePath, legacyPath } = detailCacheFilePaths(roleId)
+
   const cacheSec = Math.max(0, toInt(cfg.friendApi?.detailCacheSec, 300))
   const cacheKey = detailCacheKey(roleId)
   if (!force && cacheSec > 0) {
     try {
       const cached = await redis.get(cacheKey)
       if (cached) {
-        const parsed = JSON.parse(cached)
+        const parsed = safeJsonParse(cached, null)
         const profile = parsed?.role_profile
         if (profile && typeof profile === "object") {
           const chars = Array.isArray(profile.char_data) ? profile.char_data : []
+          saveJson(filePath, { updatedAt: Number(parsed?.updatedAt) || Date.now(), url: parsed?.url || "", role_profile: profile }).catch(
+            () => {},
+          )
           return { ok: true, roleId, profile, chars, fromCache: true, url: parsed.url || "" }
         }
       }
@@ -396,7 +523,35 @@ export async function getFriendDetail({ uidOrRoleId, force = false } = {}) {
   }
 
   const res = await requestFriendApi("/friend/detail", { role_id: roleId })
-  if (!res.ok) return { ok: false, message: res.message, url: res.url }
+  if (!res.ok) {
+    try {
+      let local = await loadJson(filePath)
+      let fromLegacy = false
+      if (!local) {
+        local = await loadJson(legacyPath)
+        fromLegacy = !!local
+      }
+      const profile = local?.role_profile
+      if (profile && typeof profile === "object") {
+        const chars = Array.isArray(profile.char_data) ? profile.char_data : []
+
+        // Best-effort: migrate legacy cache to the new bot-level data dir.
+        if (fromLegacy) saveJson(filePath, local).catch(() => {})
+
+        return {
+          ok: true,
+          roleId,
+          profile,
+          chars,
+          fromCache: true,
+          stale: true,
+          error: String(res.message || "friendApi.request_failed"),
+          url: String(local?.url || ""),
+        }
+      }
+    } catch {}
+    return { ok: false, message: res.message, url: res.url }
+  }
 
   const profile = res.data?.role_profile
   if (!profile || typeof profile !== "object") return { ok: false, message: "friendApi.missing_role_profile", url: res.url }
@@ -412,6 +567,8 @@ export async function getFriendDetail({ uidOrRoleId, force = false } = {}) {
       } catch {}
     }
   }
+
+  saveJson(filePath, { updatedAt: Date.now(), url: res.url, role_profile: profile }).catch(() => {})
 
   return { ok: true, roleId, profile, chars, fromCache: false, url: res.url }
 }
@@ -514,13 +671,49 @@ export async function getFriendCharComputedByRoleId({ roleId, templateId, advanc
   const staleCacheSec = Math.max(0, toInt(cfg.friendApi?.staleCacheSec, 86400))
   const staleKey = staleComputedCacheKey(r, t, { advanced })
 
+  const { filePath, legacyPath } = computedCacheFilePaths(r, t, { advanced })
+
+  async function readFileFallback(fallbackError) {
+    try {
+      let local = await loadJson(filePath)
+      let fromLegacy = false
+      if (!local) {
+        local = await loadJson(legacyPath)
+        fromLegacy = !!local
+      }
+      if (!local?.panel || typeof local.panel !== "object") return null
+
+      // Best-effort: migrate legacy cache to the new bot-level data dir.
+      if (fromLegacy) saveJson(filePath, local).catch(() => {})
+
+      return {
+        ok: true,
+        panel: local.panel,
+        equipMods: Array.isArray(local.equipMods) ? local.equipMods : [],
+        attrNameMap: local.attrNameMap && typeof local.attrNameMap === "object" ? local.attrNameMap : {},
+        charMeta: local.charMeta && typeof local.charMeta === "object" ? local.charMeta : null,
+        weaponTerms: Array.isArray(local.weaponTerms) ? local.weaponTerms : [],
+        charView: local.charView && typeof local.charView === "object" ? local.charView : null,
+        fromCache: true,
+        fromFile: true,
+        stale: true,
+        error: String(fallbackError || local.error || ""),
+        url: String(local.url || ""),
+        roleId: r,
+      }
+    } catch {
+      return null
+    }
+  }
+
   async function readStale(fallbackError) {
-    if (force || staleCacheSec <= 0) return null
+    if (staleCacheSec <= 0) return await readFileFallback(fallbackError)
     try {
       const cached = await redis.get(staleKey)
-      if (!cached) return null
-      const parsed = JSON.parse(cached)
-      if (!parsed?.panel || typeof parsed.panel !== "object") return null
+      if (!cached) return await readFileFallback(fallbackError)
+      const parsed = safeJsonParse(cached, null)
+      if (!parsed?.panel || typeof parsed.panel !== "object") return await readFileFallback(fallbackError)
+      saveJson(filePath, parsed).catch(() => {})
       return {
         ok: true,
         panel: parsed.panel,
@@ -536,7 +729,7 @@ export async function getFriendCharComputedByRoleId({ roleId, templateId, advanc
         roleId: r,
       }
     } catch {
-      return null
+      return await readFileFallback(fallbackError)
     }
   }
 
@@ -544,8 +737,9 @@ export async function getFriendCharComputedByRoleId({ roleId, templateId, advanc
     try {
       const cached = await redis.get(cacheKey)
       if (cached) {
-        const parsed = JSON.parse(cached)
+        const parsed = safeJsonParse(cached, null)
         if (parsed?.panel && typeof parsed.panel === "object") {
+          saveJson(filePath, parsed).catch(() => {})
           return {
             ok: true,
             panel: parsed.panel,
@@ -568,10 +762,17 @@ export async function getFriendCharComputedByRoleId({ roleId, templateId, advanc
   if (!res.ok) {
     const stale = await readStale(res.message)
     if (stale) return stale
+    const fromFile = await readFileFallback(res.message)
+    if (fromFile) return fromFile
     return { ok: false, message: res.message, url: res.url }
   }
 
   if (res.data?.found === false) {
+    // Treat as "cannot fetch" as well: allow stale/local fallback.
+    const stale = await readStale("friendApi.char_not_found")
+    if (stale) return stale
+    const fromFile = await readFileFallback("friendApi.char_not_found")
+    if (fromFile) return fromFile
     return {
       ok: false,
       message: "friendApi.char_not_found",
@@ -584,6 +785,8 @@ export async function getFriendCharComputedByRoleId({ roleId, templateId, advanc
   if (!panel || typeof panel !== "object") {
     const stale = await readStale("friendApi.missing_panel")
     if (stale) return stale
+    const fromFile = await readFileFallback("friendApi.missing_panel")
+    if (fromFile) return fromFile
     return { ok: false, message: "friendApi.missing_panel", url: res.url }
   }
 
@@ -619,17 +822,18 @@ export async function getFriendCharComputedByRoleId({ roleId, templateId, advanc
     else if (en) attrNameMap[id] = en
   }
 
+  const payload = {
+    updatedAt: Date.now(),
+    url: res.url,
+    panel,
+    equipMods,
+    attrNameMap,
+    charMeta,
+    weaponTerms,
+    charView,
+  }
+
   if (cacheSec > 0) {
-    const payload = {
-      updatedAt: Date.now(),
-      url: res.url,
-      panel,
-      equipMods,
-      attrNameMap,
-      charMeta,
-      weaponTerms,
-      charView,
-    }
     try {
       await redis.setEx(cacheKey, cacheSec, JSON.stringify(payload))
     } catch {
@@ -640,16 +844,6 @@ export async function getFriendCharComputedByRoleId({ roleId, templateId, advanc
   }
 
   if (staleCacheSec > 0) {
-    const payload = {
-      updatedAt: Date.now(),
-      url: res.url,
-      panel,
-      equipMods,
-      attrNameMap,
-      charMeta,
-      weaponTerms,
-      charView,
-    }
     try {
       await redis.setEx(staleKey, staleCacheSec, JSON.stringify(payload))
     } catch {
@@ -658,6 +852,9 @@ export async function getFriendCharComputedByRoleId({ roleId, templateId, advanc
       } catch {}
     }
   }
+
+  // Persist to disk (no TTL). Best-effort.
+  saveJson(filePath, payload).catch(() => {})
 
   return { ok: true, panel, equipMods, attrNameMap, charMeta, weaponTerms, charView, fromCache: false, url: res.url, roleId: r }
 }

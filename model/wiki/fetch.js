@@ -21,14 +21,18 @@ import {
   WIKI_HOME_URL,
 } from "./types.js"
 
-import { PLUGIN_DATA_DIR } from "../pluginMeta.js"
+import { LEGACY_PLUGIN_DATA_DIR, PLUGIN_DATA_DIR } from "../pluginMeta.js"
 
-// 缓存位于插件 data 目录（已在 .gitignore 中排除）。
+// 缓存优先写入机器人本体 data 目录，兼容旧的“插件目录内 data”。
 const DATA_DIR = path.join(PLUGIN_DATA_DIR, "wiki")
+const LEGACY_DATA_DIR = path.join(LEGACY_PLUGIN_DATA_DIR, "wiki")
 
 const LIST_JSON_PATH = path.join(DATA_DIR, LIST_CACHE_FILE)
+const LEGACY_LIST_JSON_PATH = path.join(LEGACY_DATA_DIR, LIST_CACHE_FILE)
 const CHAR_DIR = path.join(DATA_DIR, CHAR_CACHE_DIR)
+const LEGACY_CHAR_DIR = path.join(LEGACY_DATA_DIR, CHAR_CACHE_DIR)
 const WEAPON_DIR = path.join(DATA_DIR, WEAPON_CACHE_DIR)
+const LEGACY_WEAPON_DIR = path.join(LEGACY_DATA_DIR, WEAPON_CACHE_DIR)
 
 const HEADERS = {
   "User-Agent":
@@ -112,11 +116,19 @@ async function saveJson(filePath, data) {
 }
 
 async function loadListData() {
-  if (!fsSync.existsSync(LIST_JSON_PATH)) return null
+  const primaryExists = fsSync.existsSync(LIST_JSON_PATH)
+  const legacyExists = fsSync.existsSync(LEGACY_LIST_JSON_PATH)
+  if (!primaryExists && !legacyExists) return null
   try {
-    const raw = await fs.readFile(LIST_JSON_PATH, "utf8")
+    const src = primaryExists ? LIST_JSON_PATH : LEGACY_LIST_JSON_PATH
+    const raw = await fs.readFile(src, "utf8")
     const data = safeJsonParse(raw, null)
-    return data && typeof data === "object" ? data : null
+    if (!data || typeof data !== "object") return null
+
+    // Best-effort: migrate legacy cache to the new bot-level data dir.
+    if (!primaryExists && legacyExists) saveJson(LIST_JSON_PATH, data).catch(() => {})
+
+    return data
   } catch {
     return null
   }
@@ -161,12 +173,25 @@ export async function getCharWiki(name, { forceRefresh = false } = {}) {
   const safeName = sanitizeFilename(name)
   if (!safeName) return null
   const cachePath = path.join(CHAR_DIR, `${safeName}.json`)
+  const legacyCachePath = path.join(LEGACY_CHAR_DIR, `${safeName}.json`)
 
   if (!forceRefresh && !isDetailExpired(cachePath)) {
     try {
       const raw = await fs.readFile(cachePath, "utf8")
       const data = safeJsonParse(raw, null)
       return data && typeof data === "object" ? data : null
+    } catch {}
+  }
+
+  if (!forceRefresh && isDetailExpired(cachePath) && !isDetailExpired(legacyCachePath)) {
+    try {
+      const raw = await fs.readFile(legacyCachePath, "utf8")
+      const data = safeJsonParse(raw, null)
+      if (data && typeof data === "object") {
+        // Best-effort: migrate legacy cache.
+        saveJson(cachePath, data).catch(() => {})
+        return data
+      }
     } catch {}
   }
 
@@ -188,12 +213,24 @@ export async function getWeaponWiki(name, { forceRefresh = false } = {}) {
   const safeName = sanitizeFilename(name)
   if (!safeName) return null
   const cachePath = path.join(WEAPON_DIR, `${safeName}.json`)
+  const legacyCachePath = path.join(LEGACY_WEAPON_DIR, `${safeName}.json`)
 
   if (!forceRefresh && !isDetailExpired(cachePath)) {
     try {
       const raw = await fs.readFile(cachePath, "utf8")
       const data = safeJsonParse(raw, null)
       return data && typeof data === "object" ? data : null
+    } catch {}
+  }
+
+  if (!forceRefresh && isDetailExpired(cachePath) && !isDetailExpired(legacyCachePath)) {
+    try {
+      const raw = await fs.readFile(legacyCachePath, "utf8")
+      const data = safeJsonParse(raw, null)
+      if (data && typeof data === "object") {
+        saveJson(cachePath, data).catch(() => {})
+        return data
+      }
     } catch {}
   }
 
