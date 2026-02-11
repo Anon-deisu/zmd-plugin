@@ -16,6 +16,7 @@ import { resolveAliasEntry } from "../model/alias.js"
 import { buildPanelStatsFromFriendPanel, getFriendCharComputed, getFriendCharComputedByRoleId, getFriendDetail } from "../model/friendApi.js"
 import { getActiveAccount } from "../model/store.js"
 import { pluginResourcesRelPath } from "../model/pluginMeta.js"
+import { ensureListData } from "../model/wiki/fetch.js"
 import { getMessageText, getQueryUserId } from "../model/mention.js"
 
 const GAME_TITLE = "[终末地]"
@@ -420,6 +421,77 @@ export class card extends plugin {
         const cv = computed.charView && typeof computed.charView === "object" ? computed.charView : {}
         const charName = String(computed.charMeta?.nameCn || computed.charMeta?.name || resolvedName || query)
 
+        const pickImageUrl = obj => {
+          const o = obj && typeof obj === "object" ? obj : {}
+          const candidates = [
+            o.illustrationUrl,
+            o.illustration_url,
+            o.avatarRtUrl,
+            o.avatar_rt_url,
+            o.avatarSqUrl,
+            o.avatar_sq_url,
+            o.avatarUrl,
+            o.avatar_url,
+            o.iconUrl,
+            o.icon_url,
+            o.url,
+            o.imageUrl,
+            o.image_url,
+          ]
+          for (const v of candidates) {
+            const s = String(v || "").trim()
+            if (s) return s
+          }
+          return ""
+        }
+
+        // UID-only: try to fill character illustration URL for the panel background.
+        let charUrl = pickImageUrl(resolved?.entry)
+        if (!charUrl) {
+          const hit =
+            charList.find(c => String(c?.template_id || "").trim().toLowerCase() === String(templateId || "").trim().toLowerCase()) || null
+          charUrl = pickImageUrl(hit?.template) || pickImageUrl(hit)
+        }
+
+        // Last resort: use wiki list avatar_url (usually smaller, but better than blank).
+        if (!charUrl) {
+          try {
+            const listData = await ensureListData()
+            const qk = normalizeKey(charName)
+            const groups = listData?.characters && typeof listData.characters === "object" ? listData.characters : {}
+            let found = null
+
+            if (qk) {
+              for (const entries of Object.values(groups)) {
+                for (const item of Array.isArray(entries) ? entries : []) {
+                  const nk = normalizeKey(item?.name)
+                  if (nk && nk === qk) {
+                    found = item
+                    break
+                  }
+                }
+                if (found) break
+              }
+              if (!found) {
+                for (const entries of Object.values(groups)) {
+                  for (const item of Array.isArray(entries) ? entries : []) {
+                    const nk = normalizeKey(item?.name)
+                    if (nk && (nk.includes(qk) || qk.includes(nk))) {
+                      found = item
+                      break
+                    }
+                  }
+                  if (found) break
+                }
+              }
+            }
+
+            if (found) charUrl = pickImageUrl(found)
+          } catch {}
+        }
+
+        if (!charUrl) charUrl = pluginResourcesRelPath("enduid/texture2d/end_daily_logo.png")
+
         const mainAttr = String(cv.mainAttrType || "").trim().toLowerCase()
         const propertyMap = {
           physical: "物理",
@@ -575,7 +647,7 @@ export class card extends plugin {
             elem: "sr",
             imgType: "png",
             charName,
-            charUrl: "",
+            charUrl,
             rarityStars,
             property,
             profession,
