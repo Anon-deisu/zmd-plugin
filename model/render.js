@@ -14,14 +14,17 @@ import { pickRandomSideBackgroundRel } from "./sideBackground.js"
 
 const DEFAULT_WATERMARK = `[终末地]${PLUGIN_ID} & yuyu-bot`
 
+// Increase render scale for sharper images (min 1.3).
+const MIN_RENDER_SCALE = 1.3
+
 function scaleAttr(pct = 1) {
   const n = Number(pct)
   const scale = Number.isFinite(n) ? n : 1
-  const clamped = Math.min(2, Math.max(0.5, scale))
+  const clamped = Math.min(2, Math.max(MIN_RENDER_SCALE, scale))
   return `style="transform:scale(${clamped});transform-origin:0 0;"`
 }
 
-export async function render(tplPath, params = {}, { scale = 1, quality = 100 } = {}) {
+export async function render(tplPath, params = {}, { scale = MIN_RENDER_SCALE, quality = 100 } = {}) {
   const [app, tpl] = String(tplPath || "").split("/")
   if (!app || !tpl) throw new Error(`Invalid tplPath: ${tplPath}`)
 
