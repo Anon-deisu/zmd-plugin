@@ -60,6 +60,7 @@ pnpm add qrcode node-fetch
 本插件保留两种获取方式（同一个上游，数据结构一致）：
 
 - 统一后端（默认）：通过统一后端提供的 `/api/friend/*` 接口获取
+- 统一后端官网登录/获取凭证：`https://end.shallow.ink/`
 - 本地接口：通过你本地部署的 Friend API（例如 `http://127.0.0.1:18080`）获取
 
 说明：
