@@ -1,0 +1,48 @@
+{{extend defaultLayout}}
+<!--
+  enduid/info
+
+  Simple info card renderer.
+  Used by: #环境 / #数据源
+
+  Params:
+  - title: string
+  - subtitle?: string
+  - time: string
+  - kv: Array<{ k: string, v: string }>
+  - notes?: string[]
+-->
+
+{{block 'css'}}
+<link rel="stylesheet" href="{{_res_path}}enduid/css/info.css" />
+{{/block}}
+
+{{block 'main'}}
+<div class="header">
+  <div class="title">{{title}}</div>
+  <div class="time">{{time}}</div>
+</div>
+
+<div class="card">
+  {{if subtitle}}
+  <div class="subtitle">{{subtitle}}</div>
+  {{/if}}
+
+  <div class="grid">
+    {{each kv it}}
+    <div class="kv">
+      <div class="k">{{it.k}}</div>
+      <div class="v">{{it.v}}</div>
+    </div>
+    {{/each}}
+  </div>
+
+  {{if notes && notes.length}}
+  <div class="notes">
+    {{each notes n}}
+    <div class="note">{{n}}</div>
+    {{/each}}
+  </div>
+  {{/if}}
+</div>
+{{/block}}

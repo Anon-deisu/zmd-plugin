@@ -687,6 +687,56 @@ export class enduid extends plugin {
     }
 
     const modeLabel = runtime.mode === "unified" ? "统一后端" : "本地"
+
+    const kv = [
+      { k: "enable", v: runtime.enabled ? "true" : "false" },
+      { k: "source", v: `${runtime.sourceSetting}（当前使用：${modeLabel}）` },
+      { k: "当前 baseUrl", v: runtime.baseUrl ? runtime.baseUrl : "(未配置)" },
+      { k: "本地 baseUrl", v: localUrl || "(未配置)" },
+      { k: "统一后端 baseUrl", v: unifiedUrl || "(未配置)" },
+      {
+        k: "鉴权",
+        v: `Bearer(本地) ${localBearerSet ? "已配置" : "未配置"} | Bearer(统一) ${unifiedBearerSet ? "已配置" : "未配置"} | 当前 ${effectiveBearerSet ? "已配置" : "未配置"}`,
+      },
+      { k: "health", v: health },
+    ]
+
+    const notes = [
+      "切换：#数据源切换 本地 / 统一后端 / 自动（仅 master）",
+      "设置统一后端：#统一后端地址 <url> / #统一后端token <token>（建议私聊）",
+      "设置本地接口：#本地数据地址 <url> / #本地数据token <token>（建议私聊）",
+    ]
+
+    try {
+      const t = new Date()
+      const yyyy = t.getFullYear()
+      const mm = String(t.getMonth() + 1).padStart(2, "0")
+      const dd = String(t.getDate()).padStart(2, "0")
+      const hh = String(t.getHours()).padStart(2, "0")
+      const mi = String(t.getMinutes()).padStart(2, "0")
+      const ss = String(t.getSeconds()).padStart(2, "0")
+
+      const img = await renderImg(
+        "enduid/info",
+        {
+          title: `${GAME_TITLE} 数据源`,
+          subtitle: "角色面板数值/装备词条的来源（Friend API）",
+          time: `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`,
+          kv,
+          notes,
+          imgType: "png",
+          copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
+        },
+        { scale: 1, quality: 100 },
+      )
+      if (img) {
+        await e.reply(img, true)
+        return true
+      }
+    } catch (err) {
+      logger.error(`${GAME_TITLE} 数据源图片渲染失败：${err?.message || err}`)
+    }
+
     const lines = [
       `${GAME_TITLE} 角色数据来源（Friend API）`,
       `- enable: ${runtime.enabled ? "true" : "false"}`,
@@ -949,6 +999,50 @@ export class enduid extends plugin {
     } catch (err) {
       friendApiHealth = `fail:${err?.message || err}`
     }
+
+    const kv = [
+      { k: "node.execPath", v: String(process.execPath || "") },
+      { k: "node.version", v: String(process.version || "") },
+      { k: "qrcode(dep)", v: String(qrcodeDep || "") },
+      { k: "smsdk.smSdkPath", v: cfg.smsdk?.smSdkPath ? String(cfg.smsdk.smSdkPath) : "(未配置)" },
+      { k: "smsdk(自动探测)", v: smsdkPath ? String(smsdkPath) : "(未找到)" },
+      { k: "friendApi.enable", v: cfg.friendApi?.enable === false ? "false" : "true" },
+      { k: "friendApi.source", v: `${friendRuntime.sourceSetting} (mode=${friendRuntime.mode})` },
+      { k: "friendApi.localBaseUrl", v: friendRuntime.localBaseUrl ? friendRuntime.localBaseUrl : "(未配置)" },
+      { k: "friendApi.unifiedBaseUrl", v: friendRuntime.unifiedBaseUrl ? friendRuntime.unifiedBaseUrl : "(未配置)" },
+      { k: "friendApi.baseUrl(current)", v: friendRuntime.baseUrl ? friendRuntime.baseUrl : "(未配置)" },
+      { k: "friendApi.health", v: String(friendApiHealth || "") },
+    ]
+
+    try {
+      const t = new Date()
+      const yyyy = t.getFullYear()
+      const mm = String(t.getMonth() + 1).padStart(2, "0")
+      const dd = String(t.getDate()).padStart(2, "0")
+      const hh = String(t.getHours()).padStart(2, "0")
+      const mi = String(t.getMinutes()).padStart(2, "0")
+      const ss = String(t.getSeconds()).padStart(2, "0")
+
+      const img = await renderImg(
+        "enduid/info",
+        {
+          title: `${GAME_TITLE} 环境诊断`,
+          subtitle: "用于排查渲染/依赖/数据源配置问题（可截图反馈）",
+          time: `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`,
+          kv,
+          imgType: "png",
+          copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
+        },
+        { scale: 1, quality: 100 },
+      )
+      if (img) {
+        await e.reply(img, true)
+        return true
+      }
+    } catch (err) {
+      logger.error(`${GAME_TITLE} 环境诊断图片渲染失败：${err?.message || err}`)
+    }
+
     const lines = [
       `${GAME_TITLE} 环境诊断：`,
       `node.execPath: ${process.execPath}`,
