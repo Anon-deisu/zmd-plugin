@@ -156,6 +156,8 @@ friendApi:
 - `#zmd全部签到`（仅 master）
 - `#zmd状态` / `#zmd更新日志`
 - `#zmd环境`（诊断 smsdk/qrcode 等依赖）
+- `#zmd更新插件`（仅 master）
+- `#zmd强制更新插件`（仅 master）
 - `#反馈`
 
 ## 配置说明（常用项）
@@ -173,7 +175,7 @@ friendApi:
 ## 数据与隐私
 
 - 账号绑定信息主要存储在 Redis。
-- 本插件会写入的本地文件（用于缓存/加速，已在 `.gitignore` 排除，不会被提交）：
+- 本插件运行时会在以下目录生成缓存/临时文件（用于加速与容错；删除后会自动重新生成）：
   - `data/zmd-plugin/gachalog/`：抽卡记录缓存 JSON（按 UID 命名）
   - `data/zmd-plugin/wiki/`：wiki 列表/页面缓存
   - `data/zmd-plugin/card/`：卡片详情持久化缓存（按 QQ+UID 命名）
