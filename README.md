@@ -42,6 +42,11 @@ cd plugins/zmd-plugin
 git pull
 ```
 
+也可以在机器人内更新（仅 master）：
+
+- `#zmd更新插件`
+- `#zmd强制更新插件`
+
 ### 方式二：手动安装
 
 1) 下载/解压本仓库到 TRSS-Yunzai 的 `plugins/` 下（建议目录名为 `zmd-plugin`）
