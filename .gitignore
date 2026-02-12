@@ -25,3 +25,6 @@ AGENTS.md
 # Local friend api samples / scripts (DO NOT COMMIT)
 friend*.txt
 char_advanced_report*.py
+
+# Reference plugin for migration (local only)
+endfield-plugin-main/
