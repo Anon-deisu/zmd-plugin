@@ -406,6 +406,9 @@ export class enduid extends plugin {
       rule: [
         { reg: "^#?(?:终末地|zmd)(?:菜单|指令|命令|功能)?$", fnc: "help" },
         { reg: "^#?(?:终末地|zmd)(?:帮助|help)$", fnc: "help" },
+        // Feedback entry is intentionally global (#反馈) for convenience.
+        { reg: "^#\\s*反馈\\s*$", fnc: "feedback" },
+        { reg: "^#?(?:终末地|zmd|ZMD)反馈\\s*$", fnc: "feedback" },
         { reg: "^#?(?:终末地|zmd)(?:登录|login|dl)$", fnc: "login" },
         { reg: "^#?(?:终末地|zmd)(?:绑定|bind)\\s*(.+)$", fnc: "bind" },
         { reg: "^#?(?:终末地|zmd)(?:查看|我的|list)$", fnc: "list" },
@@ -508,6 +511,7 @@ export class enduid extends plugin {
           { name: "状态", cmd: `${p}状态`, desc: "" },
           { name: "更新日志", cmd: `${p}更新日志`, desc: "" },
           { name: "环境", cmd: `${p}环境`, desc: "诊断 smsdk/qrcode 依赖" },
+          { name: "反馈", cmd: "#反馈", desc: "联系主人 1493218095 / 加群 1084459856" },
           { name: "上传背景图", cmd: `${p}上传背景图`, desc: "上传到本地图库（随机渲染背景）", badge: "MASTER" },
         ],
       },
@@ -610,11 +614,24 @@ export class enduid extends plugin {
       `- ${p}状态`,
       `- ${p}更新日志`,
       `- ${p}环境`,
+      `- #反馈（联系主人 1493218095 / 加群 1084459856）`,
       isMaster ? `- ${p}上传背景图（仅 master）` : "",
     ]
       .filter(Boolean)
       .join("\n")
 
+    await e.reply(lines, true)
+    return true
+  }
+
+  async feedback() {
+    const e = this.e
+    const lines = [
+      `${GAME_TITLE} 反馈与交流`,
+      `- 反馈联系主人：1493218095`,
+      `- 交流群：1084459856`,
+      `建议带上：触发指令 + UID/角色 + 截图/日志 + 时间`,
+    ].join("\n")
     await e.reply(lines, true)
     return true
   }
