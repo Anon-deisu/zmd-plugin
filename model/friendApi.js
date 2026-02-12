@@ -93,6 +93,76 @@ function normalizeBaseUrl(raw) {
   return u.replace(/\/+$/, "")
 }
 
+function normalizeSource(raw) {
+  const s = String(raw || "").trim().toLowerCase()
+  if (!s || s === "auto" || s === "default" || s === "自动" || s === "默认") return "auto"
+  if (s === "local" || s === "native" || s.includes("本地")) return "local"
+  if (s === "unified" || s === "backend" || s === "remote" || s.includes("统一") || s.includes("后端")) return "unified"
+  return "auto"
+}
+
+function pickSecret(value) {
+  const s = String(value || "").trim()
+  return s
+}
+
+export function getFriendApiRuntimeConfig() {
+  const enabled = cfg.friendApi?.enable !== false
+
+  const localBaseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  const unifiedBaseUrl = normalizeBaseUrl(cfg.friendApi?.unifiedBaseUrl || cfg.friendApi?.unified_base_url)
+
+  const sourceSetting = normalizeSource(cfg.friendApi?.source)
+  let mode = sourceSetting
+  if (mode === "auto") mode = localBaseUrl ? "local" : "unified"
+
+  const baseUrl = mode === "local" ? localBaseUrl : unifiedBaseUrl
+
+  const localBearer = pickSecret(cfg.friendApi?.bearer || cfg.friendApi?.bearerToken || cfg.friendApi?.bearerKey)
+  const unifiedBearer = pickSecret(
+    cfg.friendApi?.unifiedBearer ||
+      cfg.friendApi?.unified_bearer ||
+      cfg.friendApi?.unifiedBearerToken ||
+      cfg.friendApi?.unifiedBearerKey,
+  )
+  const bearer = mode === "unified" ? unifiedBearer || localBearer : localBearer
+
+  // Optional compatibility: some unified deployments use X-API-Key.
+  const localApiKey = pickSecret(cfg.friendApi?.apiKey || cfg.friendApi?.api_key)
+  const unifiedApiKey = pickSecret(cfg.friendApi?.unifiedApiKey || cfg.friendApi?.unified_api_key)
+  const apiKey = mode === "unified" ? unifiedApiKey || localApiKey : localApiKey
+
+  return {
+    enabled,
+    sourceSetting,
+    mode,
+    baseUrl,
+    localBaseUrl,
+    unifiedBaseUrl,
+    bearer,
+    apiKey,
+  }
+}
+
+function buildFriendApiUrl({ baseUrl, mode }, pathname) {
+  const base = normalizeBaseUrl(baseUrl)
+  const p = String(pathname || "").trim()
+  if (!base || !p) return ""
+
+  if (mode !== "unified") return `${base}${p}`
+
+  const endsWithApi = /\/api$/i.test(base)
+  if (p === "/health") {
+    // Unified backend follows: /api/friend/health
+    return endsWithApi ? `${base}/friend/health` : `${base}/api/friend/health`
+  }
+  if (p.startsWith("/friend/")) {
+    return endsWithApi ? `${base}${p}` : `${base}/api${p}`
+  }
+  const tail = p.startsWith("/") ? p : `/${p}`
+  return endsWithApi ? `${base}${tail}` : `${base}/api${tail}`
+}
+
 function toNumber(value, def = 0) {
   const n = Number(value)
   return Number.isFinite(n) ? n : def
@@ -295,12 +365,25 @@ async function requestCharWithFallback({ roleId, templateId, advancedWanted = fa
 }
 
 export async function requestFriendApi(pathname, params, { timeoutMs, retries } = {}) {
-  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
-  if (!baseUrl) return { ok: false, message: "friendApi.baseUrl_not_configured" }
+  const runtime = getFriendApiRuntimeConfig()
+  if (!runtime.enabled || !runtime.baseUrl) return { ok: false, message: "friendApi.baseUrl_not_configured" }
+
+  const headers = {}
+  const bearerRaw = String(runtime.bearer || "").trim()
+  if (bearerRaw) {
+    let v = bearerRaw
+    // Accept either raw token, "bearer <token>", or full "Bearer <token>".
+    if (/^bearer\s+/i.test(v)) v = `Bearer ${v.replace(/^bearer\s+/i, "").trim()}`
+    else if (!/^Bearer\s+/i.test(v)) v = `Bearer ${v}`
+    headers.Authorization = v
+  }
+  const apiKey = String(runtime.apiKey || "").trim()
+  if (apiKey) headers["X-API-Key"] = apiKey
 
   let url
   try {
-    url = new URL(`${baseUrl}${pathname}`)
+    const full = buildFriendApiUrl(runtime, pathname)
+    url = new URL(full)
   } catch {
     return { ok: false, message: "friendApi.invalid_baseUrl" }
   }
@@ -324,7 +407,11 @@ export async function requestFriendApi(pathname, params, { timeoutMs, retries } 
     const timer = controller && ms > 0 ? setTimeout(() => controller.abort(), ms) : null
 
     try {
-      const resp = await fetch(url.toString(), { method: "GET", signal: controller?.signal })
+      const resp = await fetch(url.toString(), {
+        method: "GET",
+        headers: Object.keys(headers).length ? headers : undefined,
+        signal: controller?.signal,
+      })
       if (!resp.ok) {
         const msg = `friendApi.http_${resp.status}`
         last = { ok: false, message: msg, url: url.toString() }
@@ -370,9 +457,8 @@ export async function resolveFriendRoleId(uidOrRoleId, { force = false } = {}) {
 
   const { filePath: roleIdFilePath, legacyPath: roleIdLegacyPath } = roleIdCacheFilePaths(id)
 
-  const enable = cfg.friendApi?.enable !== false
-  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
-  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  const runtime = getFriendApiRuntimeConfig()
+  if (!runtime.enabled || !runtime.baseUrl) return { ok: false, message: "friendApi.disabled" }
 
   const cacheSec = Math.max(0, toInt(cfg.friendApi?.roleIdCacheSec, 86400))
   const cacheKey = roleIdCacheKey(id)
@@ -493,9 +579,8 @@ function detailCacheKey(roleId) {
 }
 
 export async function getFriendDetail({ uidOrRoleId, force = false } = {}) {
-  const enable = cfg.friendApi?.enable !== false
-  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
-  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  const runtime = getFriendApiRuntimeConfig()
+  if (!runtime.enabled || !runtime.baseUrl) return { ok: false, message: "friendApi.disabled" }
 
   const resolved = await resolveFriendRoleId(uidOrRoleId, { force })
   if (!resolved.ok || !resolved.roleId) return { ok: false, message: resolved.message || "friendApi.role_not_found" }
@@ -574,11 +659,10 @@ export async function getFriendDetail({ uidOrRoleId, force = false } = {}) {
 }
 
 export async function getFriendCharPanel({ roleId, templateId, advanced = false, force = false } = {}) {
-  const enable = cfg.friendApi?.enable !== false
-  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  const runtime = getFriendApiRuntimeConfig()
   const r0 = String(roleId || "").trim()
   const t = String(templateId || "").trim()
-  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  if (!runtime.enabled || !runtime.baseUrl) return { ok: false, message: "friendApi.disabled" }
   if (!r0 || !t) return { ok: false, message: "friendApi.missing_role_or_template" }
 
   const resolved = await resolveFriendRoleId(r0)
@@ -639,11 +723,10 @@ export async function getFriendCharPanel({ roleId, templateId, advanced = false,
 }
 
 export async function getFriendCharComputed({ roleId, templateId, advanced = false, force = false } = {}) {
-  const enable = cfg.friendApi?.enable !== false
-  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  const runtime = getFriendApiRuntimeConfig()
   const r0 = String(roleId || "").trim()
   const t = String(templateId || "").trim()
-  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  if (!runtime.enabled || !runtime.baseUrl) return { ok: false, message: "friendApi.disabled" }
   if (!r0 || !t) return { ok: false, message: "friendApi.missing_role_or_template" }
 
   const resolved = await resolveFriendRoleId(r0)
@@ -658,11 +741,10 @@ export async function getFriendCharComputed({ roleId, templateId, advanced = fal
  * This avoids an extra `/friend/search?uid=...` lookup and reduces intermittent failures.
  */
 export async function getFriendCharComputedByRoleId({ roleId, templateId, advanced = false, force = false } = {}) {
-  const enable = cfg.friendApi?.enable !== false
-  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
+  const runtime = getFriendApiRuntimeConfig()
   const r = String(roleId || "").trim()
   const t = String(templateId || "").trim()
-  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  if (!runtime.enabled || !runtime.baseUrl) return { ok: false, message: "friendApi.disabled" }
   if (!r || !t) return { ok: false, message: "friendApi.missing_role_or_template" }
 
   const cacheSec = Math.max(0, toInt(cfg.friendApi?.cacheSec, 120))
@@ -991,9 +1073,8 @@ export function buildPanelStatsFromFriendPanel(panel) {
 }
 
 export async function getFriendApiHealth({ timeoutMs = 1500 } = {}) {
-  const enable = cfg.friendApi?.enable !== false
-  const baseUrl = normalizeBaseUrl(cfg.friendApi?.baseUrl)
-  if (!enable || !baseUrl) return { ok: false, message: "friendApi.disabled" }
+  const runtime = getFriendApiRuntimeConfig()
+  if (!runtime.enabled || !runtime.baseUrl) return { ok: false, message: "friendApi.disabled" }
 
   const res = await requestFriendApi("/health", null, { timeoutMs })
   if (!res.ok) return { ok: false, message: res.message, url: res.url }

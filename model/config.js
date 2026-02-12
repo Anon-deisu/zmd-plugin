@@ -62,8 +62,24 @@ const DEFAULT_CONFIG = {
     staleCacheSec: 86400,
   },
   friendApi: {
-    /** 第三方 /friend/* API 基地址（用于补全角色面板数值） */
+    /**
+     * 角色数据接口来源：
+     * - auto: 优先使用本地 baseUrl；未配置时回退 unifiedBaseUrl
+     * - local: 强制使用 baseUrl
+     * - unified: 强制使用 unifiedBaseUrl
+     */
+    source: "auto",
+
+    /** 本地 Friend API 基地址（用于补全面板数值/装备词条等） */
     baseUrl: "",
+    /** 可选：本地 Friend API Bearer */
+    bearer: "",
+
+    /** 统一后端基地址（默认指向公共后端；可改为自建） */
+    unifiedBaseUrl: "https://end-api.shallow.ink",
+    /** 可选：统一后端 Friend API Bearer */
+    unifiedBearer: "",
+
     /** 请求超时（毫秒） */
     timeoutMs: 8000,
     /** 超时/500 时重试次数（0=不重试） */

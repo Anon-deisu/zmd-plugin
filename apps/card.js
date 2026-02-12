@@ -13,7 +13,13 @@ import { patchTempSessionReply } from "../model/reply.js"
 import { render as renderImg } from "../model/render.js"
 import { getCardDetailForUser } from "../model/card.js"
 import { resolveAliasEntry } from "../model/alias.js"
-import { buildPanelStatsFromFriendPanel, getFriendCharComputed, getFriendCharComputedByRoleId, getFriendDetail } from "../model/friendApi.js"
+import {
+  buildPanelStatsFromFriendPanel,
+  getFriendApiRuntimeConfig,
+  getFriendCharComputed,
+  getFriendCharComputedByRoleId,
+  getFriendDetail,
+} from "../model/friendApi.js"
 import { getActiveAccount } from "../model/store.js"
 import { pluginResourcesRelPath } from "../model/pluginMeta.js"
 import { ensureListData } from "../model/wiki/fetch.js"
@@ -283,9 +289,10 @@ export class card extends plugin {
     try {
       const { account } = await getActiveAccount(uid)
       if (account?.uidOnly && account?.uid && !account?.cred) {
-        const friendEnabled = cfg.friendApi?.enable !== false && cfg.friendApi?.baseUrl
+        const rt = getFriendApiRuntimeConfig()
+        const friendEnabled = rt.enabled && !!rt.baseUrl
         if (!friendEnabled) {
-          await e.reply(`${GAME_TITLE} 未配置 friendApi，无法使用 UID 绑定面板功能`, true)
+          await e.reply(`${GAME_TITLE} 未配置角色数据接口，无法使用 UID 绑定面板功能`, true)
           return true
         }
 
@@ -736,7 +743,8 @@ export class card extends plugin {
     let friendWeaponTerms = []
     try {
       await (async () => {
-      const friendEnabled = cfg.friendApi?.enable !== false && cfg.friendApi?.baseUrl
+      const rt = getFriendApiRuntimeConfig()
+      const friendEnabled = rt.enabled && !!rt.baseUrl
       const uidForFriend = String(base.roleId || result.account.uid || "").trim()
       if (!friendEnabled || !uidForFriend) return
 

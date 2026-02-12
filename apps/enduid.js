@@ -13,14 +13,14 @@ import fsSync from "node:fs"
 import plugin from "../../../lib/plugins/plugin.js"
 import fetch from "node-fetch"
 
-import cfg from "../model/config.js"
+import cfg, { configSave } from "../model/config.js"
 import { patchTempSessionReply } from "../model/reply.js"
 import { render as renderImg } from "../model/render.js"
 import { getCardDetailForUser } from "../model/card.js"
 import { updateGachaLogsForUser } from "../model/gachalog.js"
 import { getQueryUserId } from "../model/mention.js"
 import { recordFail, recordSuccess } from "../model/signStats.js"
-import { getFriendApiHealth } from "../model/friendApi.js"
+import { getFriendApiHealth, getFriendApiRuntimeConfig } from "../model/friendApi.js"
 import {
   deleteAccount,
   getActiveAccount,
@@ -409,6 +409,23 @@ export class enduid extends plugin {
         // Feedback entry is intentionally global (#反馈) for convenience.
         { reg: "^#\\s*反馈\\s*$", fnc: "feedback" },
         { reg: "^#?(?:终末地|zmd|ZMD)反馈\\s*$", fnc: "feedback" },
+
+        // Role-data source (Friend API) switching.
+        { reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:数据源|数据源状态|数据源查看)\\s*$", fnc: "dataSourceStatus" },
+        { reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:数据源切换|切换数据源)\\s*(.*)$", fnc: "dataSourceSwitch", permission: "master" },
+        { reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:统一后端|后端)(?:地址|url|URL)\\s*(.+)$", fnc: "setUnifiedBackendUrl", permission: "master" },
+        {
+          reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:统一后端|后端)(?:token|Token|TOKEN|令牌|密钥|bearer|Bearer)\\s*(.+)$",
+          fnc: "setUnifiedBackendToken",
+          permission: "master",
+        },
+        { reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:本地数据|本地后端)(?:地址|url|URL)\\s*(.+)$", fnc: "setLocalBackendUrl", permission: "master" },
+        {
+          reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:本地数据|本地后端)(?:token|Token|TOKEN|令牌|密钥|bearer|Bearer)\\s*(.+)$",
+          fnc: "setLocalBackendToken",
+          permission: "master",
+        },
+
         { reg: "^#?(?:终末地|zmd)(?:登录|login|dl)$", fnc: "login" },
         { reg: "^#?(?:终末地|zmd)(?:绑定|bind)\\s*(.+)$", fnc: "bind" },
         { reg: "^#?(?:终末地|zmd)(?:查看|我的|list)$", fnc: "list" },
@@ -511,6 +528,12 @@ export class enduid extends plugin {
           { name: "状态", cmd: `${p}状态`, desc: "" },
           { name: "更新日志", cmd: `${p}更新日志`, desc: "" },
           { name: "环境", cmd: `${p}环境`, desc: "诊断 smsdk/qrcode 依赖" },
+          { name: "数据源", cmd: "#数据源", desc: "查看角色数据接口来源" },
+          { name: "切换数据源", cmd: "#数据源切换", desc: "切换统一后端/本地", badge: "MASTER" },
+          { name: "后端地址", cmd: "#统一后端地址 <url>", desc: "设置统一后端地址", badge: "MASTER" },
+          { name: "后端Token", cmd: "#统一后端token <token>", desc: "设置统一后端 Bearer", badge: "MASTER" },
+          { name: "本地地址", cmd: "#本地数据地址 <url>", desc: "设置本地 Friend API 地址", badge: "MASTER" },
+          { name: "本地Token", cmd: "#本地数据token <token>", desc: "设置本地 Friend API Bearer", badge: "MASTER" },
           { name: "反馈", cmd: "#反馈", desc: "联系作者 1493218095 / 加群 1084459856" },
           { name: "上传背景图", cmd: `${p}上传背景图`, desc: "上传到本地图库（随机渲染背景）", badge: "MASTER" },
         ],
@@ -614,6 +637,10 @@ export class enduid extends plugin {
       `- ${p}状态`,
       `- ${p}更新日志`,
       `- ${p}环境`,
+      `- #数据源`,
+      isMaster ? `- #数据源切换（仅 master）` : "",
+      isMaster ? `- #统一后端地址 <url>（仅 master）` : "",
+      isMaster ? `- #统一后端token <token>（仅 master，建议私聊）` : "",
       `- #反馈（联系作者 1493218095 / 加群 1084459856）`,
       isMaster ? `- ${p}上传背景图（仅 master）` : "",
     ]
@@ -633,6 +660,223 @@ export class enduid extends plugin {
       `建议带上：触发指令 + UID/角色 + 截图/日志 + 时间`,
     ].join("\n")
     await e.reply(lines, true)
+    return true
+  }
+
+  async dataSourceStatus() {
+    const e = this.e
+
+    const runtime = getFriendApiRuntimeConfig()
+    const localUrl = String(runtime.localBaseUrl || "").trim()
+    const unifiedUrl = String(runtime.unifiedBaseUrl || "").trim()
+
+    const localBearerSet = !!String(cfg.friendApi?.bearer || cfg.friendApi?.bearerToken || cfg.friendApi?.bearerKey || "").trim()
+    const unifiedBearerSet = !!String(cfg.friendApi?.unifiedBearer || cfg.friendApi?.unifiedBearerToken || cfg.friendApi?.unifiedBearerKey || "").trim()
+    const effectiveBearerSet = !!String(runtime.bearer || "").trim()
+
+    let health = "(未检查)"
+    try {
+      const res = await getFriendApiHealth({ timeoutMs: 1500 })
+      health = res.ok ? "ok" : `fail:${res.message || ""}`
+    } catch (err) {
+      health = `fail:${err?.message || err}`
+    }
+
+    const modeLabel = runtime.mode === "unified" ? "统一后端" : "本地"
+    const lines = [
+      `${GAME_TITLE} 角色数据来源（Friend API）`,
+      `- enable: ${runtime.enabled ? "true" : "false"}`,
+      `- source: ${runtime.sourceSetting}（当前使用：${modeLabel}）`,
+      `- 当前 baseUrl: ${runtime.baseUrl ? runtime.baseUrl : "(未配置)"}`,
+      `- 本地 baseUrl: ${localUrl || "(未配置)"}`,
+      `- 统一后端 baseUrl: ${unifiedUrl || "(未配置)"}`,
+      `- Bearer(本地): ${localBearerSet ? "已配置" : "未配置"}  Bearer(统一): ${unifiedBearerSet ? "已配置" : "未配置"}  当前: ${effectiveBearerSet ? "已配置" : "未配置"}`,
+      `- health: ${health}`,
+      `- 切换：#数据源切换 本地 / 统一后端 / 自动（仅 master）`,
+    ].join("\n")
+
+    await e.reply(lines, true)
+    return true
+  }
+
+  async dataSourceSwitch() {
+    const e = this.e
+    const msg = String(e.msg || "").trim()
+    const arg = msg
+      .replace(/^#?(?:终末地|zmd|ZMD)?\s*(?:数据源切换|切换数据源)\s*/i, "")
+      .trim()
+
+    const runtime = getFriendApiRuntimeConfig()
+    const curMode = runtime.mode
+
+    const normalizeArg = raw => String(raw || "").trim().toLowerCase()
+    const a = normalizeArg(arg)
+
+    let target = ""
+    if (!a) {
+      target = curMode === "local" ? "unified" : "local"
+    } else if (a === "auto" || a.includes("自动")) {
+      target = "auto"
+    } else if (a === "local" || a.includes("本地")) {
+      target = "local"
+    } else if (a === "unified" || a.includes("统一") || a.includes("后端") || a.includes("backend") || a.includes("remote")) {
+      target = "unified"
+    }
+
+    if (!target) {
+      await e.reply(
+        [
+          `${GAME_TITLE} 用法：`,
+          `- #数据源切换（在 本地 / 统一后端 间切换）`,
+          `- #数据源切换 本地`,
+          `- #数据源切换 统一后端`,
+          `- #数据源切换 自动`,
+        ].join("\n"),
+        true,
+      )
+      return true
+    }
+
+    try {
+      cfg.friendApi ??= {}
+      cfg.friendApi.source = target
+      await configSave?.()
+    } catch (err) {
+      await e.reply(`${GAME_TITLE} 数据源切换失败：${err?.message || err}`, true)
+      return true
+    }
+
+    const next = getFriendApiRuntimeConfig()
+    const nextLabel = next.mode === "unified" ? "统一后端" : "本地"
+    const hint =
+      next.mode === "unified" && !String(next.bearer || "").trim()
+        ? "\n提示：统一后端可能需要 Bearer，请先私聊设置：#统一后端token <token>"
+        : ""
+    await e.reply(
+      `${GAME_TITLE} 已切换角色数据来源：${nextLabel}（source=${next.sourceSetting}）\n当前 baseUrl: ${next.baseUrl || "(未配置)"}${hint}`,
+      true,
+    )
+    return true
+  }
+
+  async setUnifiedBackendUrl() {
+    const e = this.e
+    const msg = String(e.msg || "").trim()
+    let url = msg.replace(/^#?(?:终末地|zmd|ZMD)?\s*(?:统一后端|后端)(?:地址|url|URL)\s*/i, "").trim()
+    url = url.replace(/\s+$/g, "").replace(/\/+$/g, "")
+    if (!url) {
+      await e.reply(`${GAME_TITLE} 用法：#统一后端地址 <http(s)://...>`, true)
+      return true
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      await e.reply(`${GAME_TITLE} 地址格式错误：请带上 http(s):// 前缀`, true)
+      return true
+    }
+    try {
+      cfg.friendApi ??= {}
+      cfg.friendApi.unifiedBaseUrl = url
+      await configSave?.()
+    } catch (err) {
+      await e.reply(`${GAME_TITLE} 设置失败：${err?.message || err}`, true)
+      return true
+    }
+
+    await e.reply(
+      [
+        `${GAME_TITLE} 已设置统一后端地址：${url}`,
+        `提示：统一后端默认会请求 /api/friend/*（若你填写的地址已以 /api 结尾则会自动兼容）`,
+      ].join("\n"),
+      true,
+    )
+    return true
+  }
+
+  async setUnifiedBackendToken() {
+    const e = this.e
+    if (!e.isPrivate) {
+      await e.reply(`${GAME_TITLE} 为了安全，请私聊发送：#统一后端token <token>`, true)
+      return true
+    }
+    const msg = String(e.msg || "").trim()
+    const tokenRaw = msg
+      .replace(/^#?(?:终末地|zmd|ZMD)?\s*(?:统一后端|后端)(?:token|Token|TOKEN|令牌|密钥|bearer|Bearer)\s*/i, "")
+      .trim()
+
+    const clear = /^(?:清空|重置|reset|none|null)$/i.test(tokenRaw)
+    const token = clear ? "" : tokenRaw
+    if (!clear && !token) {
+      await replyPrivate(e, `${GAME_TITLE} 用法：#统一后端token <token>（或：#统一后端token 清空）`)
+      return true
+    }
+
+    try {
+      cfg.friendApi ??= {}
+      cfg.friendApi.unifiedBearer = token
+      await configSave?.()
+    } catch (err) {
+      await replyPrivate(e, `${GAME_TITLE} 设置失败：${err?.message || err}`)
+      return true
+    }
+
+    await replyPrivate(e, `${GAME_TITLE} 统一后端 Bearer ${clear ? "已清空" : "已设置"}`)
+    return true
+  }
+
+  async setLocalBackendUrl() {
+    const e = this.e
+    const msg = String(e.msg || "").trim()
+    let url = msg.replace(/^#?(?:终末地|zmd|ZMD)?\s*(?:本地数据|本地后端)(?:地址|url|URL)\s*/i, "").trim()
+    url = url.replace(/\s+$/g, "").replace(/\/+$/g, "")
+    if (!url) {
+      await e.reply(`${GAME_TITLE} 用法：#本地数据地址 <http(s)://...>`, true)
+      return true
+    }
+    if (!/^https?:\/\//i.test(url)) {
+      await e.reply(`${GAME_TITLE} 地址格式错误：请带上 http(s):// 前缀`, true)
+      return true
+    }
+
+    try {
+      cfg.friendApi ??= {}
+      cfg.friendApi.baseUrl = url
+      await configSave?.()
+    } catch (err) {
+      await e.reply(`${GAME_TITLE} 设置失败：${err?.message || err}`, true)
+      return true
+    }
+
+    await e.reply(`${GAME_TITLE} 已设置本地 Friend API 地址：${url}`, true)
+    return true
+  }
+
+  async setLocalBackendToken() {
+    const e = this.e
+    if (!e.isPrivate) {
+      await e.reply(`${GAME_TITLE} 为了安全，请私聊发送：#本地数据token <token>`, true)
+      return true
+    }
+    const msg = String(e.msg || "").trim()
+    const tokenRaw = msg
+      .replace(/^#?(?:终末地|zmd|ZMD)?\s*(?:本地数据|本地后端)(?:token|Token|TOKEN|令牌|密钥|bearer|Bearer)\s*/i, "")
+      .trim()
+
+    const clear = /^(?:清空|重置|reset|none|null)$/i.test(tokenRaw)
+    const token = clear ? "" : tokenRaw
+    if (!clear && !token) {
+      await replyPrivate(e, `${GAME_TITLE} 用法：#本地数据token <token>（或：#本地数据token 清空）`)
+      return true
+    }
+
+    try {
+      cfg.friendApi ??= {}
+      cfg.friendApi.bearer = token
+      await configSave?.()
+    } catch (err) {
+      await replyPrivate(e, `${GAME_TITLE} 设置失败：${err?.message || err}`)
+      return true
+    }
+
+    await replyPrivate(e, `${GAME_TITLE} 本地 Friend API Bearer ${clear ? "已清空" : "已设置"}`)
     return true
   }
 
@@ -692,8 +936,9 @@ export class enduid extends plugin {
       qrcodeDep = `缺少（pnpm add qrcode）：${msg}`
     }
     let friendApiHealth = "(disabled)"
+    const friendRuntime = getFriendApiRuntimeConfig()
     try {
-      if (cfg.friendApi?.enable !== false && cfg.friendApi?.baseUrl) {
+      if (friendRuntime.enabled && friendRuntime.baseUrl) {
         const res = await getFriendApiHealth({ timeoutMs: 1500 })
         friendApiHealth = res.ok ? "ok" : `fail:${res.message || "unknown"}`
       }
@@ -708,7 +953,10 @@ export class enduid extends plugin {
       `smsdk.smSdkPath: ${cfg.smsdk?.smSdkPath ? cfg.smsdk.smSdkPath : "(未配置)"} `,
       `smsdk(自动探测): ${smsdkPath ? smsdkPath : "(未找到)"} `,
       `friendApi.enable: ${cfg.friendApi?.enable === false ? "false" : "true"}`,
-      `friendApi.baseUrl: ${cfg.friendApi?.baseUrl ? cfg.friendApi.baseUrl : "(未配置)"}`,
+      `friendApi.source: ${friendRuntime.sourceSetting} (mode=${friendRuntime.mode})`,
+      `friendApi.localBaseUrl: ${friendRuntime.localBaseUrl ? friendRuntime.localBaseUrl : "(未配置)"}`,
+      `friendApi.unifiedBaseUrl: ${friendRuntime.unifiedBaseUrl ? friendRuntime.unifiedBaseUrl : "(未配置)"}`,
+      `friendApi.baseUrl(current): ${friendRuntime.baseUrl ? friendRuntime.baseUrl : "(未配置)"}`,
       `friendApi.health: ${friendApiHealth}`,
     ]
     await e.reply(lines.join("\n"), true)
@@ -732,9 +980,12 @@ export class enduid extends plugin {
         return true
       }
 
-      const friendHint = cfg.friendApi?.enable === false || !cfg.friendApi?.baseUrl
-        ? "\n提示：未配置 friendApi，面板查询可能不可用"
-        : ""
+      const friendHint = (() => {
+        const rt = getFriendApiRuntimeConfig()
+        if (!rt.enabled || !rt.baseUrl) return "\n提示：未配置角色数据接口，面板查询可能不可用"
+        if (rt.mode === "unified" && !String(rt.bearer || "").trim()) return "\n提示：统一后端未设置 Bearer，面板查询可能不可用"
+        return ""
+      })()
       await e.reply(`${GAME_TITLE} UID 绑定成功（仅面板）\nUID: ${uidOnly}${friendHint}`, true)
       return true
     }
