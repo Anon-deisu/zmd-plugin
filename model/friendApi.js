@@ -341,6 +341,50 @@ async function readJsonSafe(resp) {
   }
 }
 
+function normalizeApiOkPayload(json) {
+  const root = json && typeof json === "object" ? json : null
+  if (!root) return { ok: false, message: "friendApi.invalid_json" }
+
+  // Native shape: { ok: true, data: {...} }
+  if (root.ok === true) return { ok: true, data: root.data }
+  if (root.ok === false) {
+    const msg = String(root.message || root.msg || "").trim()
+    return { ok: false, message: msg ? `friendApi.api_error:${msg}` : "friendApi.api_error" }
+  }
+
+  // Unified backend common shape: { code: 0, data: {...}, message: "..." }
+  const codeNum = Number(root.code)
+  if (Number.isFinite(codeNum)) {
+    if (codeNum === 0) {
+      let data = root.data
+      // Some backends wrap friend payload again: { code:0, data:{ ok:true, data:{...} } }
+      if (data && typeof data === "object" && data.ok === true && Object.prototype.hasOwnProperty.call(data, "data")) data = data.data
+      return { ok: true, data }
+    }
+    const msg = String(root.message || root.msg || "").trim()
+    return { ok: false, message: msg ? `friendApi.api_error:${codeNum}:${msg}` : `friendApi.api_error:${codeNum}` }
+  }
+
+  // Compatibility: { status: 0, data: {...} }
+  const statusNum = Number(root.status)
+  if (Number.isFinite(statusNum)) {
+    if (statusNum === 0) return { ok: true, data: root.data }
+    const msg = String(root.message || root.msg || "").trim()
+    return { ok: false, message: msg ? `friendApi.api_error:${statusNum}:${msg}` : `friendApi.api_error:${statusNum}` }
+  }
+
+  // Nested payload: { data: { ok:true, data:{...} } }
+  if (root.data && typeof root.data === "object") {
+    const inner = root.data
+    if (inner.ok === true) return { ok: true, data: inner.data }
+    const innerCode = Number(inner.code)
+    if (Number.isFinite(innerCode) && innerCode === 0) return { ok: true, data: inner.data }
+  }
+
+  // Last resort: treat as error.
+  return { ok: false, message: "friendApi.api_error" }
+}
+
 function sleep(ms) {
   const t = Math.max(0, toInt(ms, 0))
   if (!t) return Promise.resolve()
@@ -413,8 +457,14 @@ export async function requestFriendApi(pathname, params, { timeoutMs, retries } 
         signal: controller?.signal,
       })
       if (!resp.ok) {
-        const msg = `friendApi.http_${resp.status}`
-        last = { ok: false, message: msg, url: url.toString() }
+        let msg = `friendApi.http_${resp.status}`
+        let raw = null
+        try {
+          raw = await readJsonSafe(resp)
+          const detail = String(raw?.message || raw?.msg || raw?.error || "").trim()
+          if (detail) msg = `${msg}:${detail}`
+        } catch {}
+        last = { ok: false, message: msg, url: url.toString(), raw }
         if (attempt < maxRetry && isRetryableHttpStatus(resp.status)) continue
         return last
       }
@@ -425,13 +475,15 @@ export async function requestFriendApi(pathname, params, { timeoutMs, retries } 
         if (attempt < maxRetry) continue
         return last
       }
-      if (!json.ok) {
-        // API-level ok=false is usually a deterministic error (not retryable).
-        last = { ok: false, message: "friendApi.api_error", url: url.toString(), raw: json }
+
+      const normalized = normalizeApiOkPayload(json)
+      if (!normalized.ok) {
+        // API-level error is usually deterministic (not retryable).
+        last = { ok: false, message: normalized.message || "friendApi.api_error", url: url.toString(), raw: json }
         return last
       }
 
-      return { ok: true, data: json.data, url: url.toString(), raw: json }
+      return { ok: true, data: normalized.data, url: url.toString(), raw: json }
     } catch (err) {
       const msg = err?.name === "AbortError" ? "friendApi.timeout" : `friendApi.request_failed:${err?.message || err}`
       last = { ok: false, message: msg, url: url.toString() }
