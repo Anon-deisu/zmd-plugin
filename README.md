@@ -58,20 +58,20 @@ pnpm add qrcode node-fetch
 
 3) 重启机器人
 
-## 角色数据接口（Friend API：统一后端 / 本地）
+## 角色数据接口（API：统一后端 / 本地）
 
-面板中的“生命/攻击/防御/暴击、装备词条、武器基质词条”等详细数据来自 Friend API。
+面板中的“生命/攻击/防御/暴击、装备词条、武器基质词条”等详细数据来自 API。
 
-本插件保留两种获取方式（同一个上游，数据结构一致）：
+本插件保留两种获取方式：
 
 - 统一后端（默认）：通过统一后端提供的 `/api/friend/*` 接口获取
 - 统一后端官网登录/获取凭证：`https://end.shallow.ink/`
-- 本地接口：通过你本地部署的 Friend API（例如 `http://127.0.0.1:18080`）获取
+- 本地接口：通过你本地部署的 API（例如 `http://127.0.0.1:18080`）获取
 
 说明：
 
-- 未配置 Friend API 时：已登录账号仍可使用基础面板（Skland 卡片数据），但“仅 UID 绑定面板”可能不可用。
-- Friend API 通常只返回“名片展示位”角色列表，UID-only 面板查询也可能只查到展示位角色。
+- 未配置 API 时：已登录账号仍可使用基础面板（Skland 卡片数据），但“仅 UID 绑定面板”可能不可用。
+- API 通常只返回“名片展示位”角色列表，UID-only 面板查询也可能只查到展示位角色。
 
 ### 查看 / 切换数据源
 
@@ -173,7 +173,7 @@ friendApi:
 - `cmd.prefix`：仅用于帮助提示，不参与命令正则匹配（默认 `#zmd`）
 - `card.cacheSec` / `card.staleCacheSec`：卡片详情缓存（用于「卡片/面板/基建」）
 - `friendApi.source`：`auto/local/unified`
-- `friendApi.baseUrl` / `friendApi.bearer`：本地 Friend API 配置
+- `friendApi.baseUrl` / `friendApi.bearer`：本地 API 配置
 - `friendApi.unifiedBaseUrl` / `friendApi.unifiedBearer`：统一后端配置
 
 修改配置后建议重启机器人。
@@ -185,7 +185,7 @@ friendApi:
   - `data/zmd-plugin/gachalog/`：抽卡记录缓存 JSON（按 UID 命名）
   - `data/zmd-plugin/wiki/`：wiki 列表/页面缓存
   - `data/zmd-plugin/card/`：卡片详情持久化缓存（按 QQ+UID 命名）
-  - `data/zmd-plugin/friendApi/`：Friend API 的 roleId/detail/computed 持久化缓存
+  - `data/zmd-plugin/friendApi/`：API 的 roleId/detail/computed 持久化缓存
   - `temp/zmd-plugin/`：二维码等临时文件
 - 图标缓存（运行时生成）：
   - `plugins/zmd-plugin/resources/endfield/itemiconbig/`
@@ -200,7 +200,7 @@ friendApi:
    - 仍可使用旧用法：`#zmd面板<角色>`。
 
 3) UID-only 绑定后查不到想看的角色
-   - Friend API 通常只提供“名片展示位”角色列表；请先把目标角色放到名片展示位。
+   - API 通常只提供“名片展示位”角色列表；请先把目标角色放到名片展示位。
 
 ## 免责声明
 
