@@ -19,6 +19,7 @@ import fetch from "node-fetch"
 
 import { loadAliasMap } from "./alias.js"
 import { getCardDetailForUser } from "./card.js"
+import { ensureListData } from "./wiki/fetch.js"
 import {
   buildHypergryphHeaders,
   getActiveAccount,
@@ -245,11 +246,99 @@ function getPityFromRecent(items, { excludeFree = true } = {}) {
   const sorted = (items || []).slice().sort(sortTsSeqDesc)
   let pity = 0
   for (const item of sorted) {
-    if (safeInt(item?.rarity) === 6) break
     if (excludeFree && item?.isFree) continue
+    if (safeInt(item?.rarity) === 6) break
     pity++
   }
   return pity
+}
+
+function normalizeNameKey(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^0-9a-z\u4e00-\u9fff]+/gi, "")
+}
+
+function isLimitedPoolId(poolId) {
+  const id = String(poolId || "").trim().toLowerCase()
+  return id.startsWith("special") || id.startsWith("limited")
+}
+
+function isLimitedCharPool({ poolId, title } = {}) {
+  if (isLimitedPoolId(poolId)) return true
+  const t = String(title || "")
+  // Heuristic: limited banners are usually labelled as "特许寻访".
+  return /特许寻访/.test(t) || /限定/.test(t)
+}
+
+function buildBigPityCountByItemKey(poolItems, { upTargetKey = "", max = 120 } = {}) {
+  const sorted = (poolItems || []).slice().sort(sortTsSeqAsc)
+  const out = new Map()
+
+  let pity = 0
+  for (const item of sorted) {
+    if (item?.isFree) continue
+
+    pity += 1
+    if (safeInt(item?.rarity) !== 6) continue
+
+    const key = getItemKey(item)
+    out.set(key, pity)
+
+    const nameKey = normalizeNameKey(item?.charName || item?.weaponName)
+    const isUpByName = !!(upTargetKey && nameKey && nameKey === upTargetKey)
+    const isHardBig = pity >= max
+
+    // Limited pool big pity does NOT reset on non-UP 6*, but resets on UP or hard ceiling.
+    if (isUpByName || isHardBig) pity = 0
+  }
+
+  return out
+}
+
+function scoreBannerMatch(poolTitle, bannerName) {
+  const a = String(poolTitle || "").trim()
+  const b = String(bannerName || "").trim()
+  if (!a || !b) return 0
+  if (a === b) return 120
+  if (a.includes(b)) return 110
+  if (b.includes(a)) return 105
+  const ak = normalizeNameKey(a)
+  const bk = normalizeNameKey(b)
+  if (!ak || !bk) return 0
+  if (ak === bk) return 100
+  if (ak.includes(bk) || bk.includes(ak)) return 90
+  return 0
+}
+
+function pickUpTargetKeyFromWiki(listData, { poolTitle = "", latestTs = 0 } = {}) {
+  const gacha = Array.isArray(listData?.gacha) ? listData.gacha : []
+  if (!gacha.length) return ""
+
+  const latestSec = Math.floor((Number(latestTs) || 0) / 1000)
+  let best = { score: 0, key: "" }
+
+  for (const b of gacha) {
+    if (String(b?.banner_type || "") !== "character") continue
+    const targetName = String(b?.target_name || "").trim()
+    if (!targetName) continue
+
+    const nameScore = scoreBannerMatch(poolTitle, b?.banner_name)
+    if (!nameScore) continue
+
+    let timeScore = 0
+    const start = Number(b?.start_timestamp) || 0
+    const end = Number(b?.end_timestamp) || 0
+    if (latestSec > 0 && start > 0 && end > 0 && latestSec >= start && latestSec <= end) timeScore = 30
+
+    const score = nameScore + timeScore
+    if (score > best.score) {
+      best = { score, key: normalizeNameKey(targetName) }
+    }
+  }
+
+  return best.key
 }
 
 function buildPoolStats(items, { hasFree = false } = {}) {
@@ -257,7 +346,9 @@ function buildPoolStats(items, { hasFree = false } = {}) {
   const six = (items || []).filter(i => safeInt(i?.rarity) === 6).length
   const free = hasFree ? (items || []).filter(i => !!i?.isFree).length : null
   const nonFree = hasFree ? total - (free || 0) : total
-  const avg = six > 0 && total > 0 ? total / six : null
+  // Average cost should follow pity rules: free pulls do not count.
+  const paidSix = hasFree ? (items || []).filter(i => safeInt(i?.rarity) === 6 && !i?.isFree).length : six
+  const avg = paidSix > 0 && nonFree > 0 ? nonFree / paidSix : null
   return { total, six, free, nonFree, avg }
 }
 
@@ -321,7 +412,7 @@ function buildPoolsByPoolId(items, { kind = "char", hasFree = true } = {}) {
       poolId,
       title: baseTitle,
       timeRange: formatYmdRangeFromMs(poolItems),
-      pity: getPityFromRecent(poolItems, { excludeFree: false }),
+      pity: getPityFromRecent(poolItems, { excludeFree: true }),
       stats: buildPoolStats(poolItems, { hasFree }),
       sixList: poolItems.filter(i => safeInt(i?.rarity) === 6).sort(sortTsSeqDesc).slice(0, 24),
       latestTs,
@@ -798,9 +889,23 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
 
   const avatarUserId = faceUserId != null ? faceUserId : userId
 
-  // 6 星“实际花费抽数”：从上一次 6 星（不含）到本次 6 星（含）的抽数（含免费抽）
-  const charSixCost = buildSixCostByPoolId(charList, { excludeFree: false })
-  const weaponSixCost = buildSixCostByPoolId(weaponList, { excludeFree: false })
+  // 6 星“花费抽数”：按保底规则，不计入免费抽。
+  const charSixCost = buildSixCostByPoolId(charList, { excludeFree: true })
+  const weaponSixCost = buildSixCostByPoolId(weaponList, { excludeFree: true })
+
+  // poolId -> items (for limited big pity computations)
+  const charItemsByPoolId = new Map()
+  for (const it of charList) {
+    const pid = String(it?.poolId || "").trim() || "char_unknown"
+    if (!charItemsByPoolId.has(pid)) charItemsByPoolId.set(pid, [])
+    charItemsByPoolId.get(pid).push(it)
+  }
+  const weaponItemsByPoolId = new Map()
+  for (const it of weaponList) {
+    const pid = String(it?.poolId || "").trim() || "weapon_unknown"
+    if (!weaponItemsByPoolId.has(pid)) weaponItemsByPoolId.set(pid, [])
+    weaponItemsByPoolId.get(pid).push(it)
+  }
 
   let aliasMap = null
   try {
@@ -868,13 +973,60 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
 
   const exportTime = exportData?.info?.exportTimestamp ? formatYmdHmFromMs(exportData.info.exportTimestamp * 1000) : "-"
 
+  // Only fetch wiki homepage list when we may need limited UP inference.
+  let wikiListData = null
+  try {
+    const needUpDetect = pools.some(
+      p => p.kind === "char" && isLimitedCharPool({ poolId: p.poolId, title: p.title }),
+    )
+    if (needUpDetect) wikiListData = await ensureListData()
+  } catch {}
+
   const poolsView = pools.map(p => {
-    const max = p.kind === "weapon" ? 80 : 90
+    const poolItems =
+      p.kind === "weapon"
+        ? (weaponItemsByPoolId.get(String(p.poolId || "").trim()) || [])
+        : (charItemsByPoolId.get(String(p.poolId || "").trim()) || [])
+
+    const isLimited = p.kind === "char" && isLimitedCharPool({ poolId: p.poolId, title: p.title })
+
+    // Best-effort UP detection for limited pools, based on wiki homepage banner list.
+    let upTargetKey = ""
+    if (isLimited) {
+      try {
+        if (wikiListData) {
+          upTargetKey = pickUpTargetKeyFromWiki(wikiListData, { poolTitle: p.title, latestTs: p.latestTs })
+        }
+      } catch {}
+    }
+
+    const hasLimitedUp = !!(isLimited && upTargetKey)
+    const max = 80
+
     const cost = p.kind === "weapon" ? weaponSixCost : charSixCost
- 
+
+    const bigByKey = hasLimitedUp ? buildBigPityCountByItemKey(poolItems, { upTargetKey, max: 120 }) : null
+
     const logs = (p.sixList || []).map(item => {
       const name = String(item?.charName || item?.weaponName || "未知")
-      const count = safeInt(cost.get(getItemKey(item)), 1)
+      const key = getItemKey(item)
+      const isFree = !!item?.isFree
+      const smallCount = Math.max(1, safeInt(cost.get(key), 1))
+
+      const bigCount = hasLimitedUp && bigByKey ? safeInt(bigByKey.get(key), 0) : 0
+      const count = smallCount
+
+      const nameKey = normalizeNameKey(item?.charName || item?.weaponName)
+      const isUpByName = !!(hasLimitedUp && upTargetKey && nameKey && nameKey === upTargetKey)
+      const isHardBig = !!(hasLimitedUp && bigCount >= 120)
+      const isUp = isUpByName || isHardBig
+
+      const tags = []
+      // Tags are shown outside the bar to avoid clipping.
+      if (hasLimitedUp && safeInt(item?.rarity) === 6 && !isFree && !isUp) tags.push("歪")
+      if (!isFree && safeInt(item?.rarity) === 6 && smallCount >= 80) tags.push("保底")
+      if (hasLimitedUp && safeInt(item?.rarity) === 6 && !isFree && isUp && bigCount >= 120) tags.push("大保底")
+      const tag = tags.length ? tags.join("+") : ""
       const charId = String(item?.charId || "").trim()
       const charName = String(item?.charName || "").trim()
       let icon = ""
@@ -893,9 +1045,10 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
         count,
         icon,
         iconPath,
-        cls: item?.isFree ? "wai" : "up",
+        cls: isFree ? "wai" : hasLimitedUp && safeInt(item?.rarity) === 6 && !isUp ? "wai" : "up",
         rarity: safeInt(item?.rarity),
-        isFree: !!item?.isFree,
+        isFree,
+        tag,
       }
     })
 

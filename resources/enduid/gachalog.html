@@ -219,8 +219,30 @@
   }
 
   .enduid-gachalog .process {
-    width: 470px;
-    padding-right: 15px;
+    /* Keep overall width stable while reserving space for tags */
+    width: 485px;
+    padding-right: 80px;
+    box-sizing: border-box;
+    position: relative;
+  }
+
+  .enduid-gachalog .process .tag {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 16px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(0, 0, 0, 0.38);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.85);
+    white-space: nowrap;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.28);
+    pointer-events: none;
   }
 
   .enduid-gachalog .process .bar {
@@ -237,6 +259,9 @@
     align-items: center;
     min-width: 46px;
     box-shadow: 0 0 6px rgba(0, 0, 0, 0.28);
+    color: #111;
+    font-weight: 900;
+    border: 1px solid rgba(0, 0, 0, 0.12);
   }
 
   .enduid-gachalog .process .bar.gold {
@@ -350,7 +375,7 @@
     <div class="gacha-list">
       {{if pool.logs && pool.logs.length}}
       {{each pool.logs ds idx}}
-      {{set max = pool.max || 90}}
+      {{set max = pool.max || 80}}
       {{set count = ds.count || 0}}
       {{set pct = count > max ? 100 : (count / max * 100) }}
       <div class="gacha-item {{ds.cls || (ds.isFree ? 'wai' : 'up')}}">
@@ -375,6 +400,9 @@
                style="width:{{pct}}%">
             {{count}}抽{{if ds.isFree}} (免费){{/if}}
           </div>
+          {{if ds.tag}}
+          <div class="tag">{{ds.tag}}</div>
+          {{/if}}
         </div>
       </div>
       {{/each}}
