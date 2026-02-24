@@ -1027,6 +1027,11 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
       if (!isFree && safeInt(item?.rarity) === 6 && smallCount >= 80) tags.push("保底")
       if (hasLimitedUp && safeInt(item?.rarity) === 6 && !isFree && isUp && bigCount >= 120) tags.push("大保底")
       const tag = tags.length ? tags.join("+") : ""
+
+      let tagCls = ""
+      if (tag.includes("大保底")) tagCls = "tag-dabao"
+      else if (tag.includes("歪")) tagCls = "tag-wai"
+      else if (tag.includes("保底")) tagCls = "tag-baodi"
       const charId = String(item?.charId || "").trim()
       const charName = String(item?.charName || "").trim()
       let icon = ""
@@ -1049,6 +1054,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
         rarity: safeInt(item?.rarity),
         isFree,
         tag,
+        tagCls,
       }
     })
 
