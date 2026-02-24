@@ -75,10 +75,19 @@ const DEFAULT_CONFIG = {
     /** 可选：本地 Friend API Bearer */
     bearer: "",
 
+    /** 可选：本地匿名令牌（对应请求头 X-Anonymous-Token） */
+    anonymousToken: "",
+
     /** 统一后端基地址（默认指向公共后端；可改为自建） */
     unifiedBaseUrl: "https://end-api.shallow.ink",
     /** 可选：统一后端 Friend API Bearer */
     unifiedBearer: "",
+
+    /**
+     * 可选：统一后端匿名令牌（对应请求头 X-Anonymous-Token）。
+     * 一些公共后端会用它替代 Bearer / API Key。
+     */
+    unifiedAnonymousToken: "",
 
     /** 请求超时（毫秒） */
     timeoutMs: 8000,

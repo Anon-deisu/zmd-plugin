@@ -419,6 +419,11 @@ export class enduid extends plugin {
           fnc: "setUnifiedBackendToken",
           permission: "master",
         },
+        {
+          reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:统一后端|后端)(?:匿名token|匿名Token|匿名令牌|匿名密钥|anonymous|anon)\\s*(.+)$",
+          fnc: "setUnifiedBackendAnonymousToken",
+          permission: "master",
+        },
         { reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:本地数据|本地后端)(?:地址|url|URL)\\s*(.+)$", fnc: "setLocalBackendUrl", permission: "master" },
         {
           reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:本地数据|本地后端)(?:token|Token|TOKEN|令牌|密钥|bearer|Bearer)\\s*(.+)$",
@@ -534,6 +539,7 @@ export class enduid extends plugin {
           { name: "切换数据源", cmd: "#数据源切换", desc: "切换统一后端/本地", badge: "MASTER" },
           { name: "后端地址", cmd: "#统一后端地址 <url>", desc: "设置统一后端地址", badge: "MASTER" },
           { name: "后端Token", cmd: "#统一后端token <token>", desc: "设置统一后端 Bearer", badge: "MASTER" },
+          { name: "匿名Token", cmd: "#统一后端匿名token <token>", desc: "设置统一后端匿名令牌", badge: "MASTER" },
           { name: "本地地址", cmd: "#本地数据地址 <url>", desc: "设置本地 Friend API 地址", badge: "MASTER" },
           { name: "本地Token", cmd: "#本地数据token <token>", desc: "设置本地 Friend API Bearer", badge: "MASTER" },
           { name: "反馈", cmd: "#反馈", desc: "联系作者 1493218095 / 加群 1084459856" },
@@ -645,6 +651,7 @@ export class enduid extends plugin {
       isMaster ? `- #数据源切换（仅 master）` : "",
       isMaster ? `- #统一后端地址 <url>（仅 master）` : "",
       isMaster ? `- #统一后端token <token>（仅 master，建议私聊）` : "",
+      isMaster ? `- #统一后端匿名token <token>（仅 master，建议私聊）` : "",
       `- #反馈（联系作者 1493218095 / 加群 1084459856）`,
       isMaster ? `- ${p}上传背景图（仅 master）` : "",
     ]
@@ -678,6 +685,10 @@ export class enduid extends plugin {
     const unifiedBearerSet = !!String(cfg.friendApi?.unifiedBearer || cfg.friendApi?.unifiedBearerToken || cfg.friendApi?.unifiedBearerKey || "").trim()
     const effectiveBearerSet = !!String(runtime.bearer || "").trim()
 
+    const localAnonSet = !!String(cfg.friendApi?.anonymousToken || cfg.friendApi?.anonymous_token || "").trim()
+    const unifiedAnonSet = !!String(cfg.friendApi?.unifiedAnonymousToken || cfg.friendApi?.unified_anonymous_token || "").trim()
+    const effectiveAnonSet = !!String(runtime.anonymousToken || "").trim()
+
     let health = "(未检查)"
     try {
       const res = await getFriendApiHealth({ timeoutMs: 1500 })
@@ -696,7 +707,7 @@ export class enduid extends plugin {
       { k: "统一后端 baseUrl", v: unifiedUrl || "(未配置)" },
       {
         k: "鉴权",
-        v: `Bearer(本地) ${localBearerSet ? "已配置" : "未配置"} | Bearer(统一) ${unifiedBearerSet ? "已配置" : "未配置"} | 当前 ${effectiveBearerSet ? "已配置" : "未配置"}`,
+        v: `Bearer(本地) ${localBearerSet ? "已配置" : "未配置"} | Bearer(统一) ${unifiedBearerSet ? "已配置" : "未配置"} | 匿名(本地) ${localAnonSet ? "已配置" : "未配置"} | 匿名(统一) ${unifiedAnonSet ? "已配置" : "未配置"} | 当前(Bearer) ${effectiveBearerSet ? "已配置" : "未配置"} 当前(匿名) ${effectiveAnonSet ? "已配置" : "未配置"}`,
       },
       { k: "health", v: health },
     ]
@@ -704,6 +715,7 @@ export class enduid extends plugin {
     const notes = [
       "切换：#数据源切换 本地 / 统一后端 / 自动（仅 master）",
       "设置统一后端：#统一后端地址 <url> / #统一后端token <token>（建议私聊）",
+      "（可选）匿名鉴权：#统一后端匿名token <token>（建议私聊）",
       "设置本地接口：#本地数据地址 <url> / #本地数据token <token>（建议私聊）",
     ]
 
@@ -744,7 +756,7 @@ export class enduid extends plugin {
       `- 当前 baseUrl: ${runtime.baseUrl ? runtime.baseUrl : "(未配置)"}`,
       `- 本地 baseUrl: ${localUrl || "(未配置)"}`,
       `- 统一后端 baseUrl: ${unifiedUrl || "(未配置)"}`,
-      `- Bearer(本地): ${localBearerSet ? "已配置" : "未配置"}  Bearer(统一): ${unifiedBearerSet ? "已配置" : "未配置"}  当前: ${effectiveBearerSet ? "已配置" : "未配置"}`,
+      `- Bearer(本地): ${localBearerSet ? "已配置" : "未配置"}  Bearer(统一): ${unifiedBearerSet ? "已配置" : "未配置"}  匿名(本地): ${localAnonSet ? "已配置" : "未配置"}  匿名(统一): ${unifiedAnonSet ? "已配置" : "未配置"}  当前(Bearer): ${effectiveBearerSet ? "已配置" : "未配置"}  当前(匿名): ${effectiveAnonSet ? "已配置" : "未配置"}`,
       `- health: ${health}`,
       `- 切换：#数据源切换 本地 / 统一后端 / 自动（仅 master）`,
     ].join("\n")
@@ -803,8 +815,8 @@ export class enduid extends plugin {
     const next = getFriendApiRuntimeConfig()
     const nextLabel = next.mode === "unified" ? "统一后端" : "本地"
     const hint =
-      next.mode === "unified" && !String(next.bearer || "").trim()
-        ? "\n提示：统一后端可能需要 Bearer，请先私聊设置：#统一后端token <token>"
+      next.mode === "unified" && !String(next.bearer || "").trim() && !String(next.anonymousToken || "").trim() && !String(next.apiKey || "").trim()
+        ? "\n提示：统一后端可能需要鉴权，请先私聊设置：#统一后端token <token> 或 #统一后端匿名token <token>"
         : ""
     await e.reply(
       `${GAME_TITLE} 已切换角色数据来源：${nextLabel}（source=${next.sourceSetting}）\n当前 baseUrl: ${next.baseUrl || "(未配置)"}${hint}`,
@@ -838,7 +850,7 @@ export class enduid extends plugin {
     await e.reply(
       [
         `${GAME_TITLE} 已设置统一后端地址：${url}`,
-        `提示：统一后端默认会请求 /api/friend/*（若你填写的地址已以 /api 结尾则会自动兼容）`,
+        `提示：统一后端默认会请求 /api/friend/*（若你填写的地址已以 /api 或 /api/friend 结尾则会自动兼容）`,
       ].join("\n"),
       true,
     )
@@ -873,6 +885,38 @@ export class enduid extends plugin {
     }
 
     await replyPrivate(e, `${GAME_TITLE} 统一后端 Bearer ${clear ? "已清空" : "已设置"}`)
+    return true
+  }
+
+  async setUnifiedBackendAnonymousToken() {
+    const e = this.e
+    if (!e.isPrivate) {
+      await e.reply(`${GAME_TITLE} 为了安全，请私聊发送：#统一后端匿名token <token>`, true)
+      return true
+    }
+
+    const msg = String(e.msg || "").trim()
+    const tokenRaw = msg
+      .replace(/^#?(?:终末地|zmd|ZMD)?\s*(?:统一后端|后端)(?:匿名token|匿名Token|匿名令牌|匿名密钥|anonymous|anon)\s*/i, "")
+      .trim()
+
+    const clear = /^(?:清空|重置|reset|none|null)$/i.test(tokenRaw)
+    const token = clear ? "" : tokenRaw
+    if (!clear && !token) {
+      await replyPrivate(e, `${GAME_TITLE} 用法：#统一后端匿名token <token>（或：#统一后端匿名token 清空）`)
+      return true
+    }
+
+    try {
+      cfg.friendApi ??= {}
+      cfg.friendApi.unifiedAnonymousToken = token
+      await configSave?.()
+    } catch (err) {
+      await replyPrivate(e, `${GAME_TITLE} 设置失败：${err?.message || err}`)
+      return true
+    }
+
+    await replyPrivate(e, `${GAME_TITLE} 统一后端匿名令牌 ${clear ? "已清空" : "已设置"}`)
     return true
   }
 

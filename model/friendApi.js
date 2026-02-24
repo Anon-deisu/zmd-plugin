@@ -127,6 +127,10 @@ export function getFriendApiRuntimeConfig() {
   )
   const bearer = mode === "unified" ? unifiedBearer || localBearer : localBearer
 
+  const localAnonymousToken = pickSecret(cfg.friendApi?.anonymousToken || cfg.friendApi?.anonymous_token)
+  const unifiedAnonymousToken = pickSecret(cfg.friendApi?.unifiedAnonymousToken || cfg.friendApi?.unified_anonymous_token)
+  const anonymousToken = mode === "unified" ? unifiedAnonymousToken || localAnonymousToken : localAnonymousToken
+
   // Optional compatibility: some unified deployments use X-API-Key.
   const localApiKey = pickSecret(cfg.friendApi?.apiKey || cfg.friendApi?.api_key)
   const unifiedApiKey = pickSecret(cfg.friendApi?.unifiedApiKey || cfg.friendApi?.unified_api_key)
@@ -141,6 +145,7 @@ export function getFriendApiRuntimeConfig() {
     unifiedBaseUrl,
     bearer,
     apiKey,
+    anonymousToken,
   }
 }
 
@@ -152,14 +157,19 @@ function buildFriendApiUrl({ baseUrl, mode }, pathname) {
   if (mode !== "unified") return `${base}${p}`
 
   const endsWithApi = /\/api$/i.test(base)
+  const endsWithFriend = /\/friend$/i.test(base)
+  const endsWithApiFriend = /\/api\/friend$/i.test(base)
   if (p === "/health") {
     // Unified backend follows: /api/friend/health
+    if (endsWithApiFriend || endsWithFriend) return `${base}/health`
     return endsWithApi ? `${base}/friend/health` : `${base}/api/friend/health`
   }
   if (p.startsWith("/friend/")) {
+    if (endsWithApiFriend || endsWithFriend) return `${base}${p.replace(/^\/friend/i, "")}`
     return endsWithApi ? `${base}${p}` : `${base}/api${p}`
   }
   const tail = p.startsWith("/") ? p : `/${p}`
+  if (endsWithApiFriend || endsWithFriend) return `${base}${tail}`
   return endsWithApi ? `${base}${tail}` : `${base}/api${tail}`
 }
 
@@ -341,12 +351,20 @@ async function readJsonSafe(resp) {
   }
 }
 
+function unwrapOkData(value) {
+  let v = value
+  while (v && typeof v === "object" && v.ok === true && Object.prototype.hasOwnProperty.call(v, "data")) {
+    v = v.data
+  }
+  return v
+}
+
 function normalizeApiOkPayload(json) {
   const root = json && typeof json === "object" ? json : null
   if (!root) return { ok: false, message: "friendApi.invalid_json" }
 
   // Native shape: { ok: true, data: {...} }
-  if (root.ok === true) return { ok: true, data: root.data }
+  if (root.ok === true) return { ok: true, data: unwrapOkData(root.data) }
   if (root.ok === false) {
     const msg = String(root.message || root.msg || "").trim()
     return { ok: false, message: msg ? `friendApi.api_error:${msg}` : "friendApi.api_error" }
@@ -356,9 +374,7 @@ function normalizeApiOkPayload(json) {
   const codeNum = Number(root.code)
   if (Number.isFinite(codeNum)) {
     if (codeNum === 0) {
-      let data = root.data
-      // Some backends wrap friend payload again: { code:0, data:{ ok:true, data:{...} } }
-      if (data && typeof data === "object" && data.ok === true && Object.prototype.hasOwnProperty.call(data, "data")) data = data.data
+      const data = unwrapOkData(root.data)
       return { ok: true, data }
     }
     const msg = String(root.message || root.msg || "").trim()
@@ -368,7 +384,7 @@ function normalizeApiOkPayload(json) {
   // Compatibility: { status: 0, data: {...} }
   const statusNum = Number(root.status)
   if (Number.isFinite(statusNum)) {
-    if (statusNum === 0) return { ok: true, data: root.data }
+    if (statusNum === 0) return { ok: true, data: unwrapOkData(root.data) }
     const msg = String(root.message || root.msg || "").trim()
     return { ok: false, message: msg ? `friendApi.api_error:${statusNum}:${msg}` : `friendApi.api_error:${statusNum}` }
   }
@@ -376,9 +392,9 @@ function normalizeApiOkPayload(json) {
   // Nested payload: { data: { ok:true, data:{...} } }
   if (root.data && typeof root.data === "object") {
     const inner = root.data
-    if (inner.ok === true) return { ok: true, data: inner.data }
+    if (inner.ok === true) return { ok: true, data: unwrapOkData(inner.data) }
     const innerCode = Number(inner.code)
-    if (Number.isFinite(innerCode) && innerCode === 0) return { ok: true, data: inner.data }
+    if (Number.isFinite(innerCode) && innerCode === 0) return { ok: true, data: unwrapOkData(inner.data) }
   }
 
   // Last resort: treat as error.
@@ -423,6 +439,9 @@ export async function requestFriendApi(pathname, params, { timeoutMs, retries } 
   }
   const apiKey = String(runtime.apiKey || "").trim()
   if (apiKey) headers["X-API-Key"] = apiKey
+
+  const anonymousToken = String(runtime.anonymousToken || "").trim()
+  if (anonymousToken) headers["X-Anonymous-Token"] = anonymousToken
 
   let url
   try {
@@ -550,26 +569,47 @@ export async function resolveFriendRoleId(uidOrRoleId, { force = false } = {}) {
   let lastErr = ""
 
   try {
-    const search = await requestFriendApi("/friend/search", { uid: id })
-    if (search.ok) {
+    const tried = new Set()
+    const candidates = []
+    const isNum = /^\d+$/.test(id)
+    const isLongNum = isNum && id.length >= 8
+    const push = p => {
+      const key = JSON.stringify(p)
+      if (tried.has(key)) return
+      tried.add(key)
+      candidates.push(p)
+    }
+
+    // Different deployments use different query modes.
+    // - long numeric id usually works with uid=
+    // - short id / name often works with keyword=
+    if (isLongNum) push({ uid: id })
+    push({ keyword: id })
+    if (isNum && !isLongNum) push({ uid: id })
+
+    for (const params of candidates) {
+      const search = await requestFriendApi("/friend/search", params)
+      if (!search.ok) {
+        lastErr = search.message || lastErr
+        continue
+      }
+
       const items = Array.isArray(search.data?.items) ? search.data.items : []
       const rid = items?.[0]?.role_id
       const v = rid != null ? String(rid).trim() : ""
-      if (v) {
-        if (cacheSec > 0) {
+      if (!v) continue
+
+      if (cacheSec > 0) {
+        try {
+          await redis.setEx(cacheKey, cacheSec, v)
+        } catch {
           try {
-            await redis.setEx(cacheKey, cacheSec, v)
-          } catch {
-            try {
-              await redis.set(cacheKey, v, { EX: cacheSec })
-            } catch {}
-          }
+            await redis.set(cacheKey, v, { EX: cacheSec })
+          } catch {}
         }
-        saveJson(roleIdFilePath, { updatedAt: Date.now(), uid: id, roleId: v }).catch(() => {})
-        return { ok: true, roleId: v, fromCache: false }
       }
-    } else {
-      lastErr = search.message || lastErr
+      saveJson(roleIdFilePath, { updatedAt: Date.now(), uid: id, roleId: v }).catch(() => {})
+      return { ok: true, roleId: v, fromCache: false }
     }
   } catch (err) {
     lastErr = `friendApi.request_failed:${err?.message || err}`
