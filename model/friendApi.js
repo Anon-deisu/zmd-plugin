@@ -118,23 +118,44 @@ export function getFriendApiRuntimeConfig() {
 
   const baseUrl = mode === "local" ? localBaseUrl : unifiedBaseUrl
 
-  const localBearer = pickSecret(cfg.friendApi?.bearer || cfg.friendApi?.bearerToken || cfg.friendApi?.bearerKey)
-  const unifiedBearer = pickSecret(
+  const localBearerRaw = pickSecret(cfg.friendApi?.bearer || cfg.friendApi?.bearerToken || cfg.friendApi?.bearerKey)
+  const unifiedBearerRaw = pickSecret(
     cfg.friendApi?.unifiedBearer ||
       cfg.friendApi?.unified_bearer ||
       cfg.friendApi?.unifiedBearerToken ||
       cfg.friendApi?.unifiedBearerKey,
   )
-  const bearer = mode === "unified" ? unifiedBearer || localBearer : localBearer
+  const localBearerExplicit = /^bearer\s+/i.test(localBearerRaw)
+  const unifiedBearerExplicit = /^bearer\s+/i.test(unifiedBearerRaw)
+  let bearer = mode === "unified" ? unifiedBearerRaw || localBearerRaw : localBearerRaw
+  const bearerExplicit = mode === "unified" ? unifiedBearerExplicit : localBearerExplicit
 
-  const localAnonymousToken = pickSecret(cfg.friendApi?.anonymousToken || cfg.friendApi?.anonymous_token)
-  const unifiedAnonymousToken = pickSecret(cfg.friendApi?.unifiedAnonymousToken || cfg.friendApi?.unified_anonymous_token)
-  const anonymousToken = mode === "unified" ? unifiedAnonymousToken || localAnonymousToken : localAnonymousToken
+  const localAnonymousTokenRaw = pickSecret(cfg.friendApi?.anonymousToken || cfg.friendApi?.anonymous_token)
+  const unifiedAnonymousTokenRaw = pickSecret(cfg.friendApi?.unifiedAnonymousToken || cfg.friendApi?.unified_anonymous_token)
+  let anonymousToken = mode === "unified" ? unifiedAnonymousTokenRaw || localAnonymousTokenRaw : localAnonymousTokenRaw
 
-  // Optional compatibility: some unified deployments use X-API-Key.
-  const localApiKey = pickSecret(cfg.friendApi?.apiKey || cfg.friendApi?.api_key)
-  const unifiedApiKey = pickSecret(cfg.friendApi?.unifiedApiKey || cfg.friendApi?.unified_api_key)
-  const apiKey = mode === "unified" ? unifiedApiKey || localApiKey : localApiKey
+  // Optional: API key auth.
+  const localApiKeyRaw = pickSecret(cfg.friendApi?.apiKey || cfg.friendApi?.api_key)
+  const unifiedApiKeyRaw = pickSecret(cfg.friendApi?.unifiedApiKey || cfg.friendApi?.unified_api_key)
+  let apiKey = mode === "unified" ? unifiedApiKeyRaw || localApiKeyRaw : localApiKeyRaw
+
+  // Optional: framework token auth.
+  const localFrameworkTokenRaw = pickSecret(cfg.friendApi?.frameworkToken || cfg.friendApi?.framework_token)
+  const unifiedFrameworkTokenRaw = pickSecret(cfg.friendApi?.unifiedFrameworkToken || cfg.friendApi?.unified_framework_token)
+  let frameworkToken = mode === "unified" ? unifiedFrameworkTokenRaw || localFrameworkTokenRaw : localFrameworkTokenRaw
+
+  // Compatibility: unified backend keys often look like ef_*/qr_* and are NOT Bearer.
+  // Users frequently paste them into the Bearer config by mistake.
+  if (mode === "unified" && bearer && !bearerExplicit) {
+    const tokenOnly = String(bearer).trim().replace(/^Bearer\s+/i, "").trim()
+    if (!apiKey && /^ef_[0-9a-zA-Z]+$/.test(tokenOnly)) {
+      apiKey = tokenOnly
+      bearer = ""
+    } else if (!frameworkToken && /^(?:ef|qr)_[0-9a-zA-Z]+$/.test(tokenOnly)) {
+      frameworkToken = tokenOnly
+      bearer = ""
+    }
+  }
 
   return {
     enabled,
@@ -146,6 +167,7 @@ export function getFriendApiRuntimeConfig() {
     bearer,
     apiKey,
     anonymousToken,
+    frameworkToken,
   }
 }
 
@@ -442,6 +464,9 @@ export async function requestFriendApi(pathname, params, { timeoutMs, retries } 
 
   const anonymousToken = String(runtime.anonymousToken || "").trim()
   if (anonymousToken) headers["X-Anonymous-Token"] = anonymousToken
+
+  const frameworkToken = String(runtime.frameworkToken || "").trim()
+  if (frameworkToken) headers["X-Framework-Token"] = frameworkToken
 
   let url
   try {

@@ -78,6 +78,12 @@ const DEFAULT_CONFIG = {
     /** 可选：本地匿名令牌（对应请求头 X-Anonymous-Token） */
     anonymousToken: "",
 
+    /** 可选：API Key（对应请求头 X-API-Key） */
+    apiKey: "",
+
+    /** 可选：Framework Token（对应请求头 X-Framework-Token） */
+    frameworkToken: "",
+
     /** 统一后端基地址（默认指向公共后端；可改为自建） */
     unifiedBaseUrl: "https://end-api.shallow.ink",
     /** 可选：统一后端 Friend API Bearer */
@@ -88,6 +94,12 @@ const DEFAULT_CONFIG = {
      * 一些公共后端会用它替代 Bearer / API Key。
      */
     unifiedAnonymousToken: "",
+
+    /** 可选：统一后端 API Key（对应请求头 X-API-Key） */
+    unifiedApiKey: "",
+
+    /** 可选：统一后端 Framework Token（对应请求头 X-Framework-Token，常见前缀 ef_/qr_） */
+    unifiedFrameworkToken: "",
 
     /** 请求超时（毫秒） */
     timeoutMs: 8000,

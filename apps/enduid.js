@@ -420,6 +420,16 @@ export class enduid extends plugin {
           permission: "master",
         },
         {
+          reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:统一后端|后端)(?:apikey|api_key|apiKey|APIKEY|API密钥|API秘钥)\\s*(.+)$",
+          fnc: "setUnifiedBackendApiKey",
+          permission: "master",
+        },
+        {
+          reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:统一后端|后端)(?:frameworktoken|framework_token|framework|框架token|框架令牌)\\s*(.+)$",
+          fnc: "setUnifiedBackendFrameworkToken",
+          permission: "master",
+        },
+        {
           reg: "^#?(?:终末地|zmd|ZMD)?\\s*(?:统一后端|后端)(?:匿名token|匿名Token|匿名令牌|匿名密钥|anonymous|anon)\\s*(.+)$",
           fnc: "setUnifiedBackendAnonymousToken",
           permission: "master",
@@ -539,6 +549,8 @@ export class enduid extends plugin {
           { name: "切换数据源", cmd: "#数据源切换", desc: "切换统一后端/本地", badge: "MASTER" },
           { name: "后端地址", cmd: "#统一后端地址 <url>", desc: "设置统一后端地址", badge: "MASTER" },
           { name: "后端Token", cmd: "#统一后端token <token>", desc: "设置统一后端 Bearer", badge: "MASTER" },
+          { name: "后端ApiKey", cmd: "#统一后端apikey <key>", desc: "设置统一后端 API Key", badge: "MASTER" },
+          { name: "框架Token", cmd: "#统一后端frameworktoken <token>", desc: "设置统一后端 Framework Token", badge: "MASTER" },
           { name: "匿名Token", cmd: "#统一后端匿名token <token>", desc: "设置统一后端匿名令牌", badge: "MASTER" },
           { name: "本地地址", cmd: "#本地数据地址 <url>", desc: "设置本地 Friend API 地址", badge: "MASTER" },
           { name: "本地Token", cmd: "#本地数据token <token>", desc: "设置本地 Friend API Bearer", badge: "MASTER" },
@@ -650,7 +662,9 @@ export class enduid extends plugin {
       `- #数据源`,
       isMaster ? `- #数据源切换（仅 master）` : "",
       isMaster ? `- #统一后端地址 <url>（仅 master）` : "",
-      isMaster ? `- #统一后端token <token>（仅 master，建议私聊）` : "",
+      isMaster ? `- #统一后端token <token>（仅 master，建议私聊；支持 Bearer / ef_ / qr_）` : "",
+      isMaster ? `- #统一后端apikey <key>（仅 master，建议私聊）` : "",
+      isMaster ? `- #统一后端frameworktoken <token>（仅 master，建议私聊）` : "",
       isMaster ? `- #统一后端匿名token <token>（仅 master，建议私聊）` : "",
       `- #反馈（联系作者 1493218095 / 加群 1084459856）`,
       isMaster ? `- ${p}上传背景图（仅 master）` : "",
@@ -685,6 +699,14 @@ export class enduid extends plugin {
     const unifiedBearerSet = !!String(cfg.friendApi?.unifiedBearer || cfg.friendApi?.unifiedBearerToken || cfg.friendApi?.unifiedBearerKey || "").trim()
     const effectiveBearerSet = !!String(runtime.bearer || "").trim()
 
+    const localApiKeySet = !!String(cfg.friendApi?.apiKey || cfg.friendApi?.api_key || "").trim()
+    const unifiedApiKeySet = !!String(cfg.friendApi?.unifiedApiKey || cfg.friendApi?.unified_api_key || "").trim()
+    const effectiveApiKeySet = !!String(runtime.apiKey || "").trim()
+
+    const localFrameworkSet = !!String(cfg.friendApi?.frameworkToken || cfg.friendApi?.framework_token || "").trim()
+    const unifiedFrameworkSet = !!String(cfg.friendApi?.unifiedFrameworkToken || cfg.friendApi?.unified_framework_token || "").trim()
+    const effectiveFrameworkSet = !!String(runtime.frameworkToken || "").trim()
+
     const localAnonSet = !!String(cfg.friendApi?.anonymousToken || cfg.friendApi?.anonymous_token || "").trim()
     const unifiedAnonSet = !!String(cfg.friendApi?.unifiedAnonymousToken || cfg.friendApi?.unified_anonymous_token || "").trim()
     const effectiveAnonSet = !!String(runtime.anonymousToken || "").trim()
@@ -705,16 +727,18 @@ export class enduid extends plugin {
       { k: "当前 baseUrl", v: runtime.baseUrl ? runtime.baseUrl : "(未配置)" },
       { k: "本地 baseUrl", v: localUrl || "(未配置)" },
       { k: "统一后端 baseUrl", v: unifiedUrl || "(未配置)" },
-      {
-        k: "鉴权",
-        v: `Bearer(本地) ${localBearerSet ? "已配置" : "未配置"} | Bearer(统一) ${unifiedBearerSet ? "已配置" : "未配置"} | 匿名(本地) ${localAnonSet ? "已配置" : "未配置"} | 匿名(统一) ${unifiedAnonSet ? "已配置" : "未配置"} | 当前(Bearer) ${effectiveBearerSet ? "已配置" : "未配置"} 当前(匿名) ${effectiveAnonSet ? "已配置" : "未配置"}`,
-      },
+      { k: "Bearer", v: `本地 ${localBearerSet ? "已配置" : "未配置"} | 统一 ${unifiedBearerSet ? "已配置" : "未配置"} | 当前 ${effectiveBearerSet ? "已配置" : "未配置"}` },
+      { k: "API Key", v: `本地 ${localApiKeySet ? "已配置" : "未配置"} | 统一 ${unifiedApiKeySet ? "已配置" : "未配置"} | 当前 ${effectiveApiKeySet ? "已配置" : "未配置"}` },
+      { k: "Framework", v: `本地 ${localFrameworkSet ? "已配置" : "未配置"} | 统一 ${unifiedFrameworkSet ? "已配置" : "未配置"} | 当前 ${effectiveFrameworkSet ? "已配置" : "未配置"}` },
+      { k: "Anonymous", v: `本地 ${localAnonSet ? "已配置" : "未配置"} | 统一 ${unifiedAnonSet ? "已配置" : "未配置"} | 当前 ${effectiveAnonSet ? "已配置" : "未配置"}` },
       { k: "health", v: health },
     ]
 
     const notes = [
       "切换：#数据源切换 本地 / 统一后端 / 自动（仅 master）",
       "设置统一后端：#统一后端地址 <url> / #统一后端token <token>（建议私聊）",
+      "（推荐）API Key：#统一后端apikey <key>（建议私聊，常见前缀 ef_）",
+      "（可选）Framework Token：#统一后端frameworktoken <token>（建议私聊）",
       "（可选）匿名鉴权：#统一后端匿名token <token>（建议私聊）",
       "设置本地接口：#本地数据地址 <url> / #本地数据token <token>（建议私聊）",
     ]
@@ -756,7 +780,10 @@ export class enduid extends plugin {
       `- 当前 baseUrl: ${runtime.baseUrl ? runtime.baseUrl : "(未配置)"}`,
       `- 本地 baseUrl: ${localUrl || "(未配置)"}`,
       `- 统一后端 baseUrl: ${unifiedUrl || "(未配置)"}`,
-      `- Bearer(本地): ${localBearerSet ? "已配置" : "未配置"}  Bearer(统一): ${unifiedBearerSet ? "已配置" : "未配置"}  匿名(本地): ${localAnonSet ? "已配置" : "未配置"}  匿名(统一): ${unifiedAnonSet ? "已配置" : "未配置"}  当前(Bearer): ${effectiveBearerSet ? "已配置" : "未配置"}  当前(匿名): ${effectiveAnonSet ? "已配置" : "未配置"}`,
+      `- Bearer: 本地${localBearerSet ? "已配置" : "未配置"} 统一${unifiedBearerSet ? "已配置" : "未配置"} 当前${effectiveBearerSet ? "已配置" : "未配置"}`,
+      `- API Key: 本地${localApiKeySet ? "已配置" : "未配置"} 统一${unifiedApiKeySet ? "已配置" : "未配置"} 当前${effectiveApiKeySet ? "已配置" : "未配置"}`,
+      `- Framework: 本地${localFrameworkSet ? "已配置" : "未配置"} 统一${unifiedFrameworkSet ? "已配置" : "未配置"} 当前${effectiveFrameworkSet ? "已配置" : "未配置"}`,
+      `- Anonymous: 本地${localAnonSet ? "已配置" : "未配置"} 统一${unifiedAnonSet ? "已配置" : "未配置"} 当前${effectiveAnonSet ? "已配置" : "未配置"}`,
       `- health: ${health}`,
       `- 切换：#数据源切换 本地 / 统一后端 / 自动（仅 master）`,
     ].join("\n")
@@ -815,8 +842,12 @@ export class enduid extends plugin {
     const next = getFriendApiRuntimeConfig()
     const nextLabel = next.mode === "unified" ? "统一后端" : "本地"
     const hint =
-      next.mode === "unified" && !String(next.bearer || "").trim() && !String(next.anonymousToken || "").trim() && !String(next.apiKey || "").trim()
-        ? "\n提示：统一后端可能需要鉴权，请先私聊设置：#统一后端token <token> 或 #统一后端匿名token <token>"
+      next.mode === "unified" &&
+      !String(next.bearer || "").trim() &&
+      !String(next.apiKey || "").trim() &&
+      !String(next.frameworkToken || "").trim() &&
+      !String(next.anonymousToken || "").trim()
+        ? "\n提示：统一后端可能需要鉴权，请先私聊设置：#统一后端apikey <key>（常见 ef_）或 #统一后端token <token> 或 #统一后端匿名token <token>"
         : ""
     await e.reply(
       `${GAME_TITLE} 已切换角色数据来源：${nextLabel}（source=${next.sourceSetting}）\n当前 baseUrl: ${next.baseUrl || "(未配置)"}${hint}`,
@@ -860,7 +891,7 @@ export class enduid extends plugin {
   async setUnifiedBackendToken() {
     const e = this.e
     if (!e.isPrivate) {
-      await e.reply(`${GAME_TITLE} 为了安全，请私聊发送：#统一后端token <token>`, true)
+      await e.reply(`${GAME_TITLE} 为了安全，请私聊发送：#统一后端token <token>（支持 Bearer / ef_ / qr_）`, true)
       return true
     }
     const msg = String(e.msg || "").trim()
@@ -871,20 +902,125 @@ export class enduid extends plugin {
     const clear = /^(?:清空|重置|reset|none|null)$/i.test(tokenRaw)
     const token = clear ? "" : tokenRaw
     if (!clear && !token) {
-      await replyPrivate(e, `${GAME_TITLE} 用法：#统一后端token <token>（或：#统一后端token 清空）`)
+      await replyPrivate(
+        e,
+        [
+          `${GAME_TITLE} 用法：`,
+          `- #统一后端token <token>（Bearer / ef_ / qr_）`,
+          `- #统一后端token 清空`,
+          `也可用：#统一后端apikey <key> / #统一后端frameworktoken <token>`,
+        ].join("\n"),
+      )
       return true
+    }
+
+    let kind = "bearer"
+    let value = String(token || "").trim()
+    const explicitBearer = /^bearer\s+/i.test(value)
+    if (!clear && !explicitBearer) {
+      if (/^ef_[0-9a-zA-Z]+$/.test(value)) kind = "apiKey"
+      else if (/^qr_[0-9a-zA-Z]+$/.test(value)) kind = "framework"
     }
 
     try {
       cfg.friendApi ??= {}
-      cfg.friendApi.unifiedBearer = token
+
+      if (clear) {
+        // Clear the common unified auth fields that users may have set via this command.
+        cfg.friendApi.unifiedBearer = ""
+        cfg.friendApi.unifiedApiKey = ""
+        cfg.friendApi.unifiedFrameworkToken = ""
+      } else if (kind === "apiKey") {
+        cfg.friendApi.unifiedApiKey = value
+      } else if (kind === "framework") {
+        cfg.friendApi.unifiedFrameworkToken = value
+      } else {
+        cfg.friendApi.unifiedBearer = value
+      }
+
       await configSave?.()
     } catch (err) {
       await replyPrivate(e, `${GAME_TITLE} 设置失败：${err?.message || err}`)
       return true
     }
 
-    await replyPrivate(e, `${GAME_TITLE} 统一后端 Bearer ${clear ? "已清空" : "已设置"}`)
+    if (clear) {
+      await replyPrivate(e, `${GAME_TITLE} 统一后端鉴权已清空（Bearer/APIKey/Framework）`)
+      return true
+    }
+
+    const label = kind === "apiKey" ? "API Key" : kind === "framework" ? "Framework Token" : "Bearer"
+    const hint =
+      kind === "apiKey"
+        ? "（将以 X-API-Key 发送）"
+        : kind === "framework"
+          ? "（将以 X-Framework-Token 发送）"
+          : "（将以 Authorization: Bearer 发送）"
+    await replyPrivate(e, `${GAME_TITLE} 统一后端 ${label} 已设置${hint}`)
+    return true
+  }
+
+  async setUnifiedBackendApiKey() {
+    const e = this.e
+    if (!e.isPrivate) {
+      await e.reply(`${GAME_TITLE} 为了安全，请私聊发送：#统一后端apikey <key>`, true)
+      return true
+    }
+
+    const msg = String(e.msg || "").trim()
+    const keyRaw = msg
+      .replace(/^#?(?:终末地|zmd|ZMD)?\s*(?:统一后端|后端)(?:apikey|api_key|apiKey|APIKEY|API密钥|API秘钥)\s*/i, "")
+      .trim()
+
+    const clear = /^(?:清空|重置|reset|none|null)$/i.test(keyRaw)
+    const key = clear ? "" : keyRaw
+    if (!clear && !key) {
+      await replyPrivate(e, `${GAME_TITLE} 用法：#统一后端apikey <key>（或：#统一后端apikey 清空）`)
+      return true
+    }
+
+    try {
+      cfg.friendApi ??= {}
+      cfg.friendApi.unifiedApiKey = key
+      await configSave?.()
+    } catch (err) {
+      await replyPrivate(e, `${GAME_TITLE} 设置失败：${err?.message || err}`)
+      return true
+    }
+
+    await replyPrivate(e, `${GAME_TITLE} 统一后端 API Key ${clear ? "已清空" : "已设置"}`)
+    return true
+  }
+
+  async setUnifiedBackendFrameworkToken() {
+    const e = this.e
+    if (!e.isPrivate) {
+      await e.reply(`${GAME_TITLE} 为了安全，请私聊发送：#统一后端frameworktoken <token>`, true)
+      return true
+    }
+
+    const msg = String(e.msg || "").trim()
+    const tokenRaw = msg
+      .replace(/^#?(?:终末地|zmd|ZMD)?\s*(?:统一后端|后端)(?:frameworktoken|framework_token|framework|框架token|框架令牌)\s*/i, "")
+      .trim()
+
+    const clear = /^(?:清空|重置|reset|none|null)$/i.test(tokenRaw)
+    const token = clear ? "" : tokenRaw
+    if (!clear && !token) {
+      await replyPrivate(e, `${GAME_TITLE} 用法：#统一后端frameworktoken <token>（或：#统一后端frameworktoken 清空）`)
+      return true
+    }
+
+    try {
+      cfg.friendApi ??= {}
+      cfg.friendApi.unifiedFrameworkToken = token
+      await configSave?.()
+    } catch (err) {
+      await replyPrivate(e, `${GAME_TITLE} 设置失败：${err?.message || err}`)
+      return true
+    }
+
+    await replyPrivate(e, `${GAME_TITLE} 统一后端 Framework Token ${clear ? "已清空" : "已设置"}`)
     return true
   }
 
