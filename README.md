@@ -166,6 +166,15 @@ friendApi:
 - `#zmd强制更新插件`（仅 master）
 - `#反馈`
 
+### 明日方舟（森空岛）
+
+说明：复用本插件的森空岛绑定（`#zmd登录` / `#zmd绑定`），命令前缀固定为 `#fz`。
+
+- `#fz签到`
+- `#fz开启自动签到` / `#fz关闭自动签到`
+- `#fz更新抽卡记录`
+- `#fz抽卡记录`
+
 ## 配置说明（常用项）
 
 首次加载会自动生成：`config/zmd-plugin.yaml`
@@ -216,6 +225,9 @@ friendApi:
 
 - EndUID：`https://github.com/Loping151/EndUID`（主要逻辑实现参考）
 - BeyondUID：`https://github.com/baiqwerdvd/BeyondUID/tree/master`（抽卡获取/记录逻辑参考）
+- miao-plugin：`https://github.com/yoimiya-kokomi/miao-plugin`（角色面板渲染风格参考 / 抽卡记录渲染风格参考）
+- endfield-plugin：`https://github.com/Entropy-Increase-Team/endfield-plugin`（数据源接入逻辑参考：统一后端 / Friend API 鉴权与请求头）
+- arknights-plugin：`https://github.com/gxy12345/arknights-plugin`（明日方舟抽卡记录查询逻辑参考 / 森空岛签到逻辑参考）
 - biligame wiki：`https://wiki.biligame.com/zmd/`（wiki 信息获取）
 
 如你计划分发，请注意相关上游仓库的许可证要求。

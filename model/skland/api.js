@@ -25,3 +25,6 @@ export const USER_INFO_URL = `${MAIN_URL}api/${API_VERSION}/user`
 
 export const ENDFIELD_ATTENDANCE_URL = `${MAIN_URL}api/${API_VERSION}/game/endfield/attendance`
 export const CARD_DETAIL_URL = `${MAIN_URL}api/${API_VERSION}/game/endfield/card/detail`
+
+// Arknights (Skland) attendance: POST body { uid, gameId: 1 }
+export const ARKNIGHTS_ATTENDANCE_URL = `${MAIN_URL}api/${API_VERSION}/game/attendance`

@@ -465,6 +465,7 @@ export class enduid extends plugin {
   async help() {
     const e = this.e
     const p = cfg.cmd?.prefix || "#zmd"
+    const fz = "#fz"
 
     const isMaster = !!e.isMaster
 
@@ -534,6 +535,15 @@ export class enduid extends plugin {
           { name: "签到", cmd: `${p}签到`, desc: "" },
           { name: "自动签到", cmd: `${p}开启自动签到 / ${p}关闭自动签到`, desc: "" },
           { name: "全部签到", cmd: `${p}全部签到`, desc: "执行全部签到任务", badge: "MASTER" },
+        ],
+      },
+      {
+        title: "明日方舟",
+        desc: "森空岛功能（复用 #zmd 绑定）",
+        items: [
+          { name: "签到", cmd: `${fz}签到`, desc: "" },
+          { name: "自动签到", cmd: `${fz}开启自动签到 / ${fz}关闭自动签到`, desc: "" },
+          { name: "抽卡记录", cmd: `${fz}更新抽卡记录 / ${fz}抽卡记录`, desc: "限定/常驻/中坚聚合" },
         ],
       },
       {
@@ -652,6 +662,11 @@ export class enduid extends plugin {
       `- ${p}签到`,
       `- ${p}开启自动签到 / ${p}关闭自动签到`,
       isMaster ? `- ${p}全部签到（仅 master）` : "",
+      ``,
+      `【明日方舟】`,
+      `- ${fz}签到`,
+      `- ${fz}开启自动签到 / ${fz}关闭自动签到`,
+      `- ${fz}更新抽卡记录 / ${fz}抽卡记录（限定/常驻/中坚聚合）`,
       ``,
       `【其他】`,
       `- ${p}状态`,

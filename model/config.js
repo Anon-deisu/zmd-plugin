@@ -140,6 +140,17 @@ const DEFAULT_CONFIG = {
     minIntervalSec: 1,
     maxIntervalSec: 3,
   },
+  /** 明日方舟（森空岛）相关配置：命令前缀固定为 #fz */
+  fz: {
+    autoSign: {
+      enableTask: true,
+      cron: "0 10 4 * * *",
+      notifyUserId: "",
+      concurrency: 3,
+      minIntervalSec: 1,
+      maxIntervalSec: 3,
+    },
+  },
   security: {
     /** 群聊不回显 cred/token */
     noShowSecretInGroup: true,

@@ -16,6 +16,7 @@ import {
   BINDING_URL,
   CARD_DETAIL_URL,
   CRED_API,
+  ARKNIGHTS_ATTENDANCE_URL,
   ENDFIELD_APP_CODE,
   ENDFIELD_ATTENDANCE_URL,
   GAME_ID_ENDFIELD,
@@ -224,6 +225,26 @@ export async function attendance(cred, uid) {
     gameId: GAME_ID_ENDFIELD,
     body: { uid, gameId: String(GAME_ID_ENDFIELD) },
     useDeviceId: false,
+    acceptEncoding: "gzip, deflate",
+  })
+}
+
+export async function attendanceArknights(cred, uid) {
+  const ua = config.skland.ua.sklandApp
+  const headers = { ...getSklandAppHeaders(ua) }
+  return request({
+    url: ARKNIGHTS_ATTENDANCE_URL,
+    method: "POST",
+    cred,
+    uid,
+    // Skland API expects gameId=1 for Arknights attendance.
+    gameId: 1,
+    body: { uid, gameId: 1 },
+    useDeviceId: false,
+    userAgent: ua,
+    extraHeaders: headers,
+    platform: SKLAND_APP_PLATFORM,
+    vName: SKLAND_APP_VNAME,
     acceptEncoding: "gzip, deflate",
   })
 }
