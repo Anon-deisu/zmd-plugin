@@ -404,7 +404,7 @@
       <div class="gacha-item {{ds.cls || (ds.isFree ? 'wai' : 'up')}}">
         <div class="date">
           <div class="dot"></div>
-          <div class="txt">{{ds.date}}</div>
+          <div class="txt">{{ds.date}}{{if ds.isFree}} 免费{{/if}}</div>
         </div>
         <div class="name">{{ds.abbr}}</div>
         <div class="icon">
@@ -421,7 +421,7 @@
         <div class="process">
           <div class="bar  {{count<=10?'gold': (count<max*0.5 ? 'good' : (count<max*0.83) ? 'normal': 'bad')}} {{ds.tagCls || ''}}"
                style="width:{{pct}}%" {{if ds.tag}}data-tag="{{ds.tag}}"{{/if}}>
-            {{count}}抽{{if ds.isFree}} (免费){{/if}}
+            {{count}}抽
           </div>
         </div>
       </div>
