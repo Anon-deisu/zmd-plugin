@@ -178,6 +178,14 @@
     color: #aaa;
   }
 
+  .enduid-gachalog .gacha-item.free .date .dot {
+    border-color: rgba(255, 235, 115, 0.75);
+  }
+
+  .enduid-gachalog .gacha-item.free .name {
+    color: rgba(183, 247, 198, 0.95);
+  }
+
   .enduid-gachalog .gacha-item.pending .icon .icon-bg .star-text {
     color: rgba(255, 255, 255, 0.9);
     text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
@@ -404,7 +412,7 @@
       <div class="gacha-item {{ds.cls || (ds.isFree ? 'wai' : 'up')}}">
         <div class="date">
           <div class="dot"></div>
-          <div class="txt">{{ds.date}}{{if ds.isFree}} 免费{{/if}}</div>
+          <div class="txt">{{ds.date}}{{if ds.isFree}} 免费{{if ds.freeCount}}{{ds.freeCount}}{{/if}}{{/if}}</div>
         </div>
         <div class="name">{{ds.abbr}}</div>
         <div class="icon">

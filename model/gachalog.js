@@ -352,6 +352,48 @@ function buildPoolStats(items, { hasFree = false } = {}) {
   return { total, six, free, nonFree, avg }
 }
 
+function buildFreeTenPullLogs(poolItems, { minCount = 10, maxGroups = 2 } = {}) {
+  const min = Math.max(1, safeInt(minCount, 10))
+  const max = Math.max(0, safeInt(maxGroups, 2))
+  if (max <= 0) return []
+
+  // Group free pulls by timestamp. In practice, a "free ten-pull" shows up as 10 records sharing the same gachaTs.
+  const groups = new Map()
+  for (const it of poolItems || []) {
+    if (!it?.isFree) continue
+    const ts = safeInt(it?.gachaTs, 0)
+    if (!ts) continue
+    groups.set(ts, (groups.get(ts) || 0) + 1)
+  }
+
+  const out = []
+  for (const [ts, count] of groups.entries()) {
+    if (safeInt(count, 0) < min) continue
+    const c = safeInt(count, 0)
+    out.push({
+      logType: "free",
+      ts,
+      date: formatMdFromMs(ts),
+      time: formatYmdHmFromMs(ts),
+      name: `免费${c}抽`,
+      abbr: `免费${c}抽`,
+      count: c,
+      freeCount: c,
+      icon: "",
+      iconPath: "",
+      mark: "免",
+      cls: "free",
+      rarity: 0,
+      isFree: true,
+      tag: "",
+      tagCls: "",
+    })
+  }
+
+  out.sort((a, b) => safeInt(b?.ts) - safeInt(a?.ts))
+  return out.slice(0, max)
+}
+
 function getItemKey(item) {
   const poolId = String(item?.poolId || "")
   const gachaTs = String(item?.gachaTs ?? "")
@@ -1007,7 +1049,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
 
     const bigByKey = hasLimitedUp ? buildBigPityCountByItemKey(poolItems, { upTargetKey, max: 120 }) : null
 
-    const logs = (p.sixList || []).map(item => {
+    const sixLogs = (p.sixList || []).map(item => {
       const name = String(item?.charName || item?.weaponName || "未知")
       const key = getItemKey(item)
       const isFree = !!item?.isFree
@@ -1043,6 +1085,8 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
       if (!icon && weaponName) icon = weaponIconByName.get(weaponName) || ""
       const iconPath = getLocalIconPath({ charId, weaponId })
       return {
+        logType: "six",
+        ts: safeInt(item?.gachaTs, 0),
         date: formatMdFromMs(item?.gachaTs),
         time: formatYmdHmFromMs(item?.gachaTs),
         name,
@@ -1057,6 +1101,25 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
         tagCls,
       }
     })
+
+    const freeTenLogs = p.kind === "char" ? buildFreeTenPullLogs(poolItems, { minCount: 10, maxGroups: 2 }) : []
+
+    let logs = [...sixLogs, ...freeTenLogs]
+    logs.sort((a, b) => safeInt(b?.ts) - safeInt(a?.ts))
+
+    // Keep the visual list size stable (pending row is added separately).
+    const logLimit = 24
+    if (logs.length > logLimit) logs = logs.slice(0, logLimit)
+
+    // Ensure the latest free-ten summary is visible even if it's older than the last N 6*s.
+    if (freeTenLogs.length) {
+      const latestFree = freeTenLogs[0]
+      const hasFree = logs.some(it => it?.logType === "free" && safeInt(it?.ts) === safeInt(latestFree?.ts))
+      if (!hasFree && logs.length) {
+        logs[logs.length - 1] = latestFree
+        logs.sort((a, b) => safeInt(b?.ts) - safeInt(a?.ts))
+      }
+    }
 
     const pityCount = safeInt(p.pity, 0)
     if (pityCount > 0) {
