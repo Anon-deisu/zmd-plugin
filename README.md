@@ -6,12 +6,27 @@
 - 配置文件：`config/zmd-plugin.yaml`
 - 反馈/交流群：`1084459856`（指令：`#反馈`）
 
+## 目录
+
+- 功能一览
+- 快速开始
+- 安装
+- 角色数据接口（API：统一后端 / 本地）
+- 指令速查
+- 配置说明（常用项）
+- 数据与隐私
+- 常见问题
+- 免责声明
+- 仓库
+- 参考
+
 ## 功能一览
 
 - 账号：私聊扫码登录 / 手动绑定 `cred` 或 `token` / 仅绑定 UID（面板查询）
 - 查询：每日、卡片、面板、基建/飞船、公告
 - 抽卡记录：更新/查看/导入/导出/删除（支持 `@用户` 与 UID 查询）
 - 图鉴：biligame wiki 的角色/武器列表、卡池信息、图鉴查询
+- 明日方舟（`#fz`）：森空岛签到 / 抽卡记录（限定/常驻/中坚聚合）
 - 其他：状态统计、更新日志、环境诊断
 
 ## 快速开始
@@ -21,9 +36,10 @@
 3) 私聊登录：`#zmd登录`（或仅面板：`#zmd绑定<UID>`）
 4) 刷新数据：`#zmd刷新`
 5) 常用查询：
-   - `#zmd每日`
-   - `#zmd卡片`
-   - `#<角色>面板`（例如 `#管理员面板`）
+    - `#zmd每日`
+    - `#zmd卡片`
+    - `#<角色>面板`（例如 `#管理员面板`）
+6) 查看帮助：`#zmd帮助`
 
 ## 安装
 
@@ -86,7 +102,16 @@ pnpm add qrcode node-fetch
 
 - 设置地址（仅 master）：`#统一后端地址 <url>`
   - 默认地址：`https://end-api.shallow.ink`
-- 设置 Bearer（仅 master，建议私聊）：`#统一后端token <token>`
+- 设置鉴权（仅 master，建议私聊，按后端要求任选一种）：
+  - Bearer：`#统一后端token <token>`
+  - API Key：`#统一后端apikey <key>`（请求头 `X-API-Key`，常见前缀 `ef_`）
+  - Framework Token：`#统一后端frameworktoken <token>`（请求头 `X-Framework-Token`，常见前缀 `qr_`）
+  - 匿名令牌：`#统一后端匿名token <token>`（请求头 `X-Anonymous-Token`）
+
+说明：
+
+- `#统一后端token` 会自动识别部分常见前缀：例如 `ef_...` 会按 API Key 处理、`qr_...` 会按 Framework Token 处理。
+- 为避免歧义，推荐优先使用 `#统一后端apikey` / `#统一后端frameworktoken`。
 
 也可以直接编辑 `config/zmd-plugin.yaml`：
 
@@ -94,7 +119,11 @@ pnpm add qrcode node-fetch
 friendApi:
   source: auto
   unifiedBaseUrl: "https://end-api.shallow.ink"
-  unifiedBearer: "your_token"
+  # 以下鉴权任选其一：
+  # unifiedBearer: "your_bearer"
+  unifiedApiKey: "ef_xxx"
+  # unifiedFrameworkToken: "qr_xxx"
+  # unifiedAnonymousToken: "your_anon_token"
 ```
 
 ### 配置本地接口
@@ -172,8 +201,8 @@ friendApi:
 
 - `#fz签到`
 - `#fz开启自动签到` / `#fz关闭自动签到`
-- `#fz更新抽卡记录`
-- `#fz抽卡记录`
+- `#fz更新抽卡记录<@用户>`（支持 @ 他人）
+- `#fz抽卡记录<@用户>`（按“限定/常驻/中坚”聚合展示）
 
 ## 配置说明（常用项）
 
@@ -183,7 +212,10 @@ friendApi:
 - `card.cacheSec` / `card.staleCacheSec`：卡片详情缓存（用于「卡片/面板/基建」）
 - `friendApi.source`：`auto/local/unified`
 - `friendApi.baseUrl` / `friendApi.bearer`：本地 API 配置
-- `friendApi.unifiedBaseUrl` / `friendApi.unifiedBearer`：统一后端配置
+- `friendApi.anonymousToken` / `friendApi.apiKey` / `friendApi.frameworkToken`：本地 API 其他鉴权（可选）
+- `friendApi.unifiedBaseUrl`：统一后端地址
+- `friendApi.unifiedBearer` / `friendApi.unifiedApiKey` / `friendApi.unifiedFrameworkToken` / `friendApi.unifiedAnonymousToken`：统一后端鉴权（可选，按后端要求）
+- `fz.autoSign.*`：明日方舟（#fz）自动签到定时任务配置
 
 修改配置后建议重启机器人。
 
@@ -192,6 +224,7 @@ friendApi:
 - 账号绑定信息主要存储在 Redis。
 - 本插件运行时会在以下目录生成缓存/临时文件（用于加速与容错；删除后会自动重新生成）：
   - `data/zmd-plugin/gachalog/`：抽卡记录缓存 JSON（按 UID 命名）
+  - `data/zmd-plugin/fz/gachalog/`：明日方舟抽卡记录缓存 JSON（按方舟 UID 命名）
   - `data/zmd-plugin/wiki/`：wiki 列表/页面缓存
   - `data/zmd-plugin/card/`：卡片详情持久化缓存（按 QQ+UID 命名）
   - `data/zmd-plugin/friendApi/`：API 的 roleId/detail/computed 持久化缓存
@@ -209,7 +242,11 @@ friendApi:
    - 仍可使用旧用法：`#zmd面板<角色>`。
 
 3) UID-only 绑定后查不到想看的角色
-   - API 通常只提供“名片展示位”角色列表；请先把目标角色放到名片展示位。
+    - API 通常只提供“名片展示位”角色列表；请先把目标角色放到名片展示位。
+
+4) 统一后端提示 401 / 无法获取数据
+    - 统一后端可能需要不同鉴权方式（Bearer/API Key/Framework/匿名令牌）。
+    - 推荐按后端要求设置：`#统一后端apikey <key>` / `#统一后端frameworktoken <token>` / `#统一后端token <token>`。
 
 ## 免责声明
 
