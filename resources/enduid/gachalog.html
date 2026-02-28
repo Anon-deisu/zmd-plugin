@@ -412,9 +412,9 @@
       <div class="gacha-item {{ds.cls || (ds.isFree ? 'wai' : 'up')}}">
         <div class="date">
           <div class="dot"></div>
-          <div class="txt">{{ds.date}}{{if ds.isFree}} 免费{{if ds.freeCount}}{{ds.freeCount}}{{/if}}{{/if}}</div>
+          <div class="txt">{{ds.date}}</div>
         </div>
-        <div class="name">{{ds.abbr}}</div>
+        <div class="name">{{if ds.isFree && ds.logType !== 'free'}}免费 {{/if}}{{ds.abbr}}</div>
         <div class="icon">
           <div class="icon-bg star6">
             {{if ds.iconPath}}
