@@ -1563,35 +1563,87 @@ export class enduid extends plugin {
       let success = 0
       let signed = 0
       let fail = 0
-      const detailLines = []
+      let skip = 0
+      const resultsAll = []
 
       async function runOne(userId) {
         const { account } = await getActiveAccount(userId)
-        if (!account) return { status: "skip", message: `⏭️ 未绑定` }
+        if (!account) {
+          return {
+            status: "skip",
+            uid: "-",
+            name: "未绑定",
+            msg: "未绑定",
+            text: "⏭️ 未绑定",
+          }
+        }
 
         const name = String(account.nickname || account.uid || "未命名")
         const uidText = account.uid ? String(account.uid) : "-"
         const label = `UID:${uidText} ${name}`
 
-        if (!account?.cred || !account?.uid) return { status: "skip", message: `⏭️ 数据不完整 ${label}` }
+        if (!account?.cred || !account?.uid) {
+          const msg = account?.uidOnly ? "仅UID绑定（不支持签到）" : "数据不完整"
+          return {
+            status: "skip",
+            uid: uidText,
+            name,
+            msg,
+            text: `⏭️ ${msg} ${label}`,
+          }
+        }
 
         try {
           const res = await attendance(account.cred, account.uid)
           if (!res) {
             await recordFail(1)
-            return { status: "fail", message: `❌ ${label} 请求失败` }
+            return {
+              status: "fail",
+              uid: uidText,
+              name,
+              msg: "请求失败",
+              text: `❌ ${label} 请求失败`,
+            }
           }
           if (res.code === 0) {
             await recordSuccess(1)
-            return { status: "success", message: `✅ ${label}` }
+            return {
+              status: "success",
+              uid: uidText,
+              name,
+              msg: "签到完成",
+              text: `✅ ${label}`,
+            }
           }
-          if (res.code === 10001) return { status: "signed", message: `☑️ 已签 ${label}` }
+          if (res.code === 10001) {
+            return {
+              status: "signed",
+              uid: uidText,
+              name,
+              msg: "今日已签到",
+              text: `☑️ 已签 ${label}`,
+            }
+          }
 
           await recordFail(1)
-          return { status: "fail", message: `❌ ${label} ${res.message || res.code}` }
+          const errMsg = String(res.message || res.code || "失败")
+          return {
+            status: "fail",
+            uid: uidText,
+            name,
+            msg: errMsg,
+            text: `❌ ${label} ${errMsg}`,
+          }
         } catch (err) {
           await recordFail(1)
-          return { status: "fail", message: `❌ ${label} 异常 ${err?.message || err}` }
+          const errMsg = String(err?.message || err || "异常")
+          return {
+            status: "fail",
+            uid: uidText,
+            name,
+            msg: `异常 ${errMsg}`,
+            text: `❌ ${label} 异常 ${errMsg}`,
+          }
         }
       }
 
@@ -1602,7 +1654,8 @@ export class enduid extends plugin {
           if (r.status === "success") success++
           else if (r.status === "signed") signed++
           else if (r.status === "fail") fail++
-          detailLines.push(r.message)
+          else if (r.status === "skip") skip++
+          resultsAll.push(r)
         }
         if (i + concurrency < users.length && maxInterval > 0) {
           const waitSec =
@@ -1612,11 +1665,46 @@ export class enduid extends plugin {
       }
 
       const maxLines = 40
-      const body =
-        detailLines.length > maxLines
-          ? `${detailLines.slice(0, maxLines).join("\n")}\n... 还有 ${detailLines.length - maxLines} 条`
-          : detailLines.join("\n")
+      const shown = resultsAll.slice(0, maxLines)
+      const remain = Math.max(0, resultsAll.length - shown.length)
 
+      try {
+        const t = new Date()
+        const yyyy = t.getFullYear()
+        const mm = String(t.getMonth() + 1).padStart(2, "0")
+        const dd = String(t.getDate()).padStart(2, "0")
+        const hh = String(t.getHours()).padStart(2, "0")
+        const mi = String(t.getMinutes()).padStart(2, "0")
+        const ss = String(t.getSeconds()).padStart(2, "0")
+
+        const img = await renderImg(
+          "enduid/all_sign",
+          {
+            title: `${GAME_TITLE} 全部签到`,
+            time: `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`,
+            success,
+            signed,
+            fail,
+            skip,
+            total: resultsAll.length,
+            items: shown,
+            truncated: remain > 0,
+            shown: shown.length,
+            remain,
+            imgType: "png",
+            copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
+          },
+          { scale: 1, quality: 100 },
+        )
+        if (img) {
+          await e.reply(img, true)
+          return true
+        }
+      } catch (err) {
+        logger.error(`${GAME_TITLE} 全部签到图片渲染失败：${err?.message || err}`)
+      }
+
+      const body = remain > 0 ? `${shown.map(r => r.text).join("\n")}\n... 还有 ${remain} 条` : shown.map(r => r.text).join("\n")
       await e.reply(`${GAME_TITLE} 全部签到完成：成功 ${success} | 已签 ${signed} | 失败 ${fail}\n${body}`, true)
       return true
     } finally {

@@ -1,0 +1,210 @@
+/*
+  enduid/all_sign
+
+  Used by: #zmd全部签到
+  Goal: compact, readable, auto-height list image.
+*/
+
+body {
+  width: 1000px;
+  background: #0b1220;
+  color: #e5e7eb;
+  font-family: "FZB", "NZBZ", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.container {
+  width: 1000px;
+  padding: 22px 22px 14px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.header .title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.header .time {
+  font-size: 14px;
+  opacity: 0.82;
+  white-space: nowrap;
+}
+
+.card {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 14px;
+  backdrop-filter: blur(8px);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+}
+
+.pill.success {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.12);
+  color: #34d399;
+}
+
+.pill.signed {
+  border-color: rgba(96, 165, 250, 0.45);
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+}
+
+.pill.fail {
+  border-color: rgba(251, 113, 133, 0.45);
+  background: rgba(251, 113, 133, 0.12);
+  color: #fb7185;
+}
+
+.pill.skip {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.pill.total {
+  border-color: rgba(255, 230, 0, 0.5);
+  background: rgba(255, 230, 0, 0.12);
+  color: #ffe600;
+}
+
+.tip {
+  margin-top: 10px;
+  font-size: 13px;
+  opacity: 0.9;
+  line-height: 1.25;
+}
+
+.tip strong {
+  color: #ffe600;
+  font-weight: 800;
+}
+
+.list {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 10px;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-top: 5px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.18);
+}
+
+.item-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.item-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.uid {
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffe600;
+  flex: 0 0 auto;
+}
+
+.name {
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.92);
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.msg {
+  font-size: 13px;
+  opacity: 0.86;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+.item-success {
+  border-color: rgba(52, 211, 153, 0.25);
+}
+
+.item-success .dot {
+  background: #34d399;
+}
+
+.item-signed {
+  border-color: rgba(96, 165, 250, 0.25);
+}
+
+.item-signed .dot {
+  background: #60a5fa;
+}
+
+.item-fail {
+  border-color: rgba(251, 113, 133, 0.25);
+}
+
+.item-fail .dot {
+  background: #fb7185;
+}
+
+.item-skip {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.item-skip .dot {
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.copyright {
+  color: rgba(255, 255, 255, 0.72);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  opacity: 1;
+}

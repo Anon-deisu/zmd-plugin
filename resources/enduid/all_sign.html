@@ -1,0 +1,49 @@
+{{extend defaultLayout}}
+<!--
+  enduid/all_sign
+
+  渲染入口：apps/enduid.js（#zmd全部签到）
+  期望参数：title/time/success/signed/fail/skip/total/items/truncated/shown/remain
+-->
+
+{{block 'css'}}
+<link rel="stylesheet" href="{{_res_path}}enduid/css/all_sign.css" />
+{{/block}}
+
+{{block 'main'}}
+<div class="header">
+  <div class="title">{{title}}</div>
+  <div class="time">{{time}}</div>
+</div>
+
+<div class="card">
+  <div class="stats">
+    <div class="pill success">成功 {{success}}</div>
+    <div class="pill signed">已签 {{signed}}</div>
+    <div class="pill fail">失败 {{fail}}</div>
+    {{if skip && skip > 0}}
+    <div class="pill skip">跳过 {{skip}}</div>
+    {{/if}}
+    <div class="pill total">总计 {{total}}</div>
+  </div>
+
+  {{if truncated}}
+  <div class="tip">仅展示前 <strong>{{shown}}</strong> 条，剩余 <strong>{{remain}}</strong> 条未展示</div>
+  {{/if}}
+
+  <div class="list">
+    {{each items it}}
+    <div class="item item-{{it.status}}">
+      <div class="dot"></div>
+      <div class="item-body">
+        <div class="item-head">
+          <div class="uid">UID:{{it.uid}}</div>
+          <div class="name">{{it.name}}</div>
+        </div>
+        <div class="msg">{{it.msg}}</div>
+      </div>
+    </div>
+    {{/each}}
+  </div>
+</div>
+{{/block}}
