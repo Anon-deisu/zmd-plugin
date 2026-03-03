@@ -44,6 +44,29 @@ function normalize(text) {
     .toLowerCase()
 }
 
+function normalizePanelKey(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    // Keep only CJK + ASCII letters/digits; remove spaces/punctuation.
+    .replace(/[^0-9a-z\u4e00-\u9fff]+/gi, "")
+}
+
+function isExactResolvedAlias(resolved, query) {
+  const q = normalizePanelKey(query)
+  if (!q) return false
+
+  const r = resolved && typeof resolved === "object" ? resolved : null
+  const e = r?.entry && typeof r.entry === "object" ? r.entry : null
+  if (!r || !e) return false
+
+  const aliases = Array.isArray(e.alias) ? e.alias : []
+  const candidates = [r.key, e.name, e.id, ...aliases]
+    .map(normalizePanelKey)
+    .filter(Boolean)
+  return candidates.some(x => x === q)
+}
+
 function matchCharByQuery(chars, query) {
   const q = normalize(query)
   if (!q) return { type: "none" }
@@ -270,6 +293,7 @@ export class card extends plugin {
     // 2) #zmd面板 <角色名>（旧用法）
     let query = ""
     const direct = msg.match(/^#(?!终末地|zmd|ZMD|更新|刷新|查询|卡片)([\w\u4e00-\u9fa5·_\-]{1,20})\s*面板(?:\s*.*)?$/i)
+    const isDirectPanel = !!direct?.[1]
     if (direct?.[1]) query = String(direct[1]).trim()
     if (!query) query = msg.replace(/^#?(?:终末地|zmd)(?:面板|查询|mb)\s*/i, "").trim()
     if (!query) {
@@ -282,6 +306,10 @@ export class card extends plugin {
     try {
       resolved = await resolveAliasEntry(query)
     } catch {}
+
+    // For "#xx面板" shorthand, only trigger when xx is an exact Endfield alias/id.
+    // If it doesn't match, stay silent to avoid interfering with other plugins.
+    if (isDirectPanel && !isExactResolvedAlias(resolved, query)) return false
     const resolvedId = String(resolved?.entry?.id || "").trim()
     const resolvedName = String(resolved?.entry?.name || resolved?.key || "").trim()
 
@@ -374,6 +402,7 @@ export class card extends plugin {
               })
               .filter(Boolean)
               .slice(0, 8)
+            if (isDirectPanel) return false
             await e.reply(`${GAME_TITLE} 匹配到多个角色：${names.join(" / ")}\n请使用模板ID，例如：${cfg.cmd?.prefix || "#zmd"}面板 ${tids[0]}`, true)
             return true
           }
@@ -384,6 +413,7 @@ export class card extends plugin {
             .map(c => String(c?.template?.name_cn || c?.template?.name || c?.template_id || "").trim())
             .filter(Boolean)
             .slice(0, 8)
+          if (isDirectPanel) return false
           await e.reply(
             `${GAME_TITLE} 未找到角色「${query}」\n可展示角色：${list.join(" / ") || "-"}\n提示：Friend API 仅返回名片展示位，可用模板ID查询，例如：${cfg.cmd?.prefix || "#zmd"}面板 chr_0005_chen`,
             true,
@@ -717,12 +747,14 @@ export class card extends plugin {
       if (match.type === "one") char = match.char
       if (match.type === "many") {
         const list = match.chars.slice(0, 8).map(c => c?.charData?.name || "-")
+        if (isDirectPanel) return false
         await e.reply(`${GAME_TITLE} 匹配到多个角色：${list.join(" / ")}\n请更精确一点`, true)
         return true
       }
     }
 
     if (!char) {
+      if (isDirectPanel) return false
       await e.reply(`${GAME_TITLE} 未找到角色「${query}」，可先 ${cfg.cmd?.prefix || "#zmd"}刷新`, true)
       return true
     }
