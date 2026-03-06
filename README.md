@@ -29,6 +29,7 @@
 | 方舟命令前缀 | `#fz` |
 | 配置文件 | `config/zmd-plugin.yaml` |
 | 反馈 / 交流群 | `1084459856`（指令：`#反馈`） |
+| Issue 提交 | [GitHub Issues](https://github.com/Anon-deisu/zmd-plugin/issues) |
 
 <a id="quick-nav"></a>
 ## 快速导航
@@ -64,7 +65,7 @@
       <a href="#commands-account">账号</a><br/>
       <a href="#commands-query">查询</a><br/>
       <a href="#commands-gachalog">终末地抽卡记录</a><br/>
-      <a href="#commands-fz">明日方舟（#fz）</a><br/>
+      <a href="#commands-fz">方舟功能（#fz）</a><br/>
       <a href="#commands-wiki">Wiki 图鉴</a>
     </td>
     <td valign="top" width="50%">
@@ -73,6 +74,7 @@
       <a href="#privacy-storage">存储说明</a><br/>
       <a href="#privacy-paths">本地目录</a><br/>
       <a href="#faq">常见问题</a><br/>
+      <a href="#issue-feedback">问题反馈 / Issue</a><br/>
       <a href="#faq-deps">依赖缺失</a><br/>
       <a href="#faq-api-401">统一后端 401</a>
     </td>
@@ -496,6 +498,42 @@ Friend API 通常只提供“名片展示位”角色列表。请先把目标角
   - `#统一后端apikey <key>`
   - `#统一后端frameworktoken <token>`
   - `#统一后端token <token>`
+
+<p align="right"><a href="#quick-nav">返回导航</a></p>
+
+<a id="issue-feedback"></a>
+## 问题反馈与 Issue
+
+如果你在使用中遇到问题，建议优先选择下面两种方式：
+
+- 使用 GitHub Issues 提交可复现的问题：`https://github.com/Anon-deisu/zmd-plugin/issues`
+- 进入交流群沟通使用问题：`1084459856`
+
+### 提交 Issue 前，建议先确认
+
+- 已更新到较新的插件版本
+- 已阅读上面的 `快速开始`、`角色数据接口` 和 `常见问题`
+- 能说明问题是在私聊、群聊，还是某个特定命令下触发
+- 如果问题与面板有关，最好说明是否配置了统一后端 / 本地 API
+
+### 提交 Issue 时，建议附上这些信息
+
+- 使用的命令，例如：`#zmd卡片`、`#管理员面板`、`#fz抽卡记录`
+- 你期待的结果，以及实际发生了什么
+- 报错日志、控制台输出或截图
+- 复现步骤：别人怎样操作才能复现同样的问题
+- 运行环境：TRSS-Yunzai 版本、Node.js 版本、系统环境
+
+### 请不要直接公开发出的敏感信息
+
+- `cred`
+- `token`
+- `apikey`
+- `frameworktoken`
+- `anonymous token`
+- 含敏感字段的完整配置文件或后台日志
+
+如果你不确定某段日志能不能公开，建议先打码再发，或先到交流群确认。
 
 <p align="right"><a href="#quick-nav">返回导航</a></p>
 
