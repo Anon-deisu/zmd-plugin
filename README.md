@@ -37,7 +37,7 @@
 
 <table>
   <tr>
-    <td valign="top" width="33%">
+    <td valign="top" width="50%">
       <strong>开始使用</strong><br/>
       <a href="#overview">功能概览</a><br/>
       <a href="#quick-start">快速开始</a><br/>
@@ -47,7 +47,7 @@
       <a href="#installation-git">Git 安装</a><br/>
       <a href="#installation-manual">手动安装</a>
     </td>
-    <td valign="top" width="33%">
+    <td valign="top" width="50%">
       <strong>数据与配置</strong><br/>
       <a href="#api">角色数据接口</a><br/>
       <a href="#api-sources">数据源说明</a><br/>
@@ -56,7 +56,9 @@
       <a href="#api-local">配置本地接口</a><br/>
       <a href="#config">配置说明</a>
     </td>
-    <td valign="top" width="33%">
+  </tr>
+  <tr>
+    <td valign="top" width="50%">
       <strong>命令与功能</strong><br/>
       <a href="#commands">指令速查</a><br/>
       <a href="#commands-account">账号</a><br/>
@@ -65,9 +67,7 @@
       <a href="#commands-fz">明日方舟（#fz）</a><br/>
       <a href="#commands-wiki">Wiki 图鉴</a>
     </td>
-  </tr>
-  <tr>
-    <td valign="top" width="33%">
+    <td valign="top" width="50%">
       <strong>说明与排障</strong><br/>
       <a href="#data-and-privacy">数据与隐私</a><br/>
       <a href="#privacy-storage">存储说明</a><br/>
@@ -76,7 +76,9 @@
       <a href="#faq-deps">依赖缺失</a><br/>
       <a href="#faq-api-401">统一后端 401</a>
     </td>
-    <td valign="top" width="33%">
+  </tr>
+  <tr>
+    <td valign="top" width="50%">
       <strong>补充内容</strong><br/>
       <a href="#overview-endfield">终末地能力</a><br/>
       <a href="#overview-fz">明日方舟能力</a><br/>
@@ -85,7 +87,7 @@
       <a href="#commands-other">签到 / 其他</a><br/>
       <a href="#disclaimer">免责声明</a>
     </td>
-    <td valign="top" width="33%">
+    <td valign="top" width="50%">
       <strong>仓库信息</strong><br/>
       <a href="#references">仓库与参考</a><br/>
       <a href="#references-repo">仓库</a><br/>
@@ -218,7 +220,7 @@ cd plugins/zmd-plugin
 git pull
 ```
 
-机器人内更新（仅 master）：
+如果你是机器人主人，也可以直接在机器人内更新：
 
 - `#zmd更新插件`
 - `#zmd强制更新插件`
@@ -227,7 +229,7 @@ git pull
 ### 方式二：手动安装
 
 1. 下载 / 解压本仓库到 `TRSS-Yunzai/plugins/` 下
-2. 建议目录名使用：`zmd-plugin`
+2. 建议插件目录名使用：`zmd-plugin`
 3. 在 `TRSS-Yunzai` 根目录安装依赖：
 
 ```bash
@@ -266,7 +268,7 @@ pnpm add qrcode node-fetch yaml puppeteer
 ### 查看 / 切换数据源
 
 - 查看当前配置：`#数据源`
-- 切换（仅 master）：
+- 以下切换命令需要机器人主人权限：
   - `#数据源切换`
   - `#数据源切换 本地`
   - `#数据源切换 统一后端`
@@ -286,7 +288,7 @@ pnpm add qrcode node-fetch yaml puppeteer
 补充说明：
 
 - 默认地址：`https://end-api.shallow.ink`
-- 建议私聊设置鉴权信息
+- 建议在私聊中设置鉴权信息，避免敏感内容出现在群聊记录里
 - `#统一后端token` 会自动识别部分前缀：
   - `ef_...` 可能按 `API Key` 处理
   - `qr_...` 可能按 `Framework Token` 处理
@@ -360,7 +362,7 @@ friendApi:
 - 导入：`#zmd导入抽卡记录<u8_token/链接/JSON文件>`
 - 导出：`#zmd导出抽卡记录`
 - 删除：`#zmd删除抽卡记录`
-- 图标补全：`#zmd更新武器图标<UID>`（可加 `强制`；`全部` 仅 master）
+- 图标补全：`#zmd更新武器图标<UID>`（可加 `强制`；`全部` 模式仅机器人主人可用）
 
 <a id="commands-ann"></a>
 ### 公告
@@ -368,7 +370,7 @@ friendApi:
 - `#zmd公告<id>`：不填 `id` 时显示列表
 - `#zmd订阅公告`
 - `#zmd取消订阅公告`
-- `#zmd清理公告缓存`：仅清理内存缓存，不影响订阅 / 已读，仅 master
+- `#zmd清理公告缓存`：仅清理内存缓存，不影响订阅 / 已读；需机器人主人权限
 
 <a id="commands-wiki"></a>
 ### Wiki 图鉴
@@ -389,12 +391,12 @@ friendApi:
 
 - `#zmd签到`
 - `#zmd开启自动签到` / `#zmd关闭自动签到`
-- `#zmd全部签到`（仅 master）
+- `#zmd全部签到`（仅机器人主人）
 - `#zmd状态`
 - `#zmd更新日志`
 - `#zmd环境`
-- `#zmd更新插件`（仅 master）
-- `#zmd强制更新插件`（仅 master）
+- `#zmd更新插件`（仅机器人主人）
+- `#zmd强制更新插件`（仅机器人主人）
 - `#反馈`
 
 <a id="commands-fz"></a>
@@ -403,7 +405,7 @@ friendApi:
 说明：复用本插件的森空岛绑定（`#zmd登录` / `#zmd绑定`），命令前缀固定为 `#fz`。
 
 - `#fz签到`
-- `#fz全部签到`（仅 master）
+- `#fz全部签到`（仅机器人主人）
 - `#fz开启自动签到` / `#fz关闭自动签到`
 - `#fz更新抽卡记录` / `#fz更新抽卡记录 @用户`
 - `#fz全量更新抽卡记录` / `#fz全量更新抽卡记录 @用户`
@@ -418,6 +420,8 @@ friendApi:
 ## 配置说明
 
 首次加载后会自动生成：`config/zmd-plugin.yaml`
+
+如果你只是日常使用，大多数配置保持默认即可；只有在需要切换数据源、配置统一后端或调整定时任务时，才需要手动修改。
 
 | 配置项 | 说明 |
 | --- | --- |
@@ -522,6 +526,6 @@ Friend API 通常只提供“名片展示位”角色列表。请先把目标角
 - arknights-plugin：`https://github.com/gxy12345/arknights-plugin`
 - biligame wiki：`https://wiki.biligame.com/zmd/`
 
-如你计划分发，请注意相关上游仓库的许可证要求。
+如果你准备二次分发或基于本项目继续修改发布，请先确认相关上游项目的许可证要求。
 
 <p align="right"><a href="#quick-nav">返回导航</a></p>
