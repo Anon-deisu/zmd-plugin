@@ -275,37 +275,67 @@ async function ensureSklandUserId(cred, account, userId) {
   return account.sklandUserId
 }
 
+function pickBindingRole(bindingEntry) {
+  const bind = bindingEntry && typeof bindingEntry === "object" ? bindingEntry : {}
+  const roles = Array.isArray(bind.roles) ? bind.roles.filter(role => role && typeof role === "object") : []
+
+  const explicitDefault = bind.defaultRole && typeof bind.defaultRole === "object" ? bind.defaultRole : null
+  if (explicitDefault?.roleId) return { role: explicitDefault, score: 120 }
+
+  const flagged = roles.find(role => role?.isDefault || role?.default || role?.selected || role?.is_selected)
+  if (flagged?.roleId) return { role: flagged, score: 100 }
+
+  const first = roles.find(role => role?.roleId)
+  if (first?.roleId) return { role: first, score: 80 }
+
+  return { role: null, score: 0 }
+}
+
+function pickBestEndfieldBinding(bindingItems) {
+  const items = Array.isArray(bindingItems) ? bindingItems : []
+  const candidates = []
+
+  for (const item of items) {
+    if (item?.appCode !== "endfield") continue
+    const bindList = Array.isArray(item?.bindingList) ? item.bindingList : []
+    const itemDefaultUid = String(item?.defaultUid ?? item?.default_uid ?? "").trim()
+
+    for (const bind of bindList) {
+      const { role, score } = pickBindingRole(bind)
+      const roleId = String(role?.roleId || "").trim()
+      if (!roleId) continue
+
+      const recordUid = String(bind?.uid ?? itemDefaultUid ?? "").trim()
+      candidates.push({
+        score: score + (recordUid ? 10 : 0) + (itemDefaultUid && recordUid === itemDefaultUid ? 20 : 0),
+        uid: roleId,
+        nickname: String(role?.nickname || bind?.nickName || bind?.nickname || "终末地角色").trim(),
+        channelName: String(bind?.channelName || item?.channelName || "官服").trim(),
+        recordUid,
+        serverId: String(role?.serverId || bind?.serverId || item?.serverId || "1").trim() || "1",
+      })
+    }
+  }
+
+  if (!candidates.length) return null
+  candidates.sort((a, b) => b.score - a.score)
+  return candidates[0]
+}
+
 async function bindByCred(cred, userId, { usedToken, sklandUserId, deviceToken } = {}) {
   const res = await getBinding(cred)
   if (!res || res.code !== 0 || res.message !== "OK") {
     return { ok: false, message: `${GAME_TITLE} 绑定失败：请检查 cred 是否正确` }
   }
 
-  const bindingList = res?.data?.list || []
-  let endfieldUid = ""
-  let nickname = ""
-  let channelName = ""
-  let recordUid = ""
-  let serverId = "1"
+  const bindingList = Array.isArray(res?.data?.list) ? res.data.list : []
+  const picked = pickBestEndfieldBinding(bindingList)
 
-  for (const item of bindingList) {
-    if (item?.appCode !== "endfield") continue
-    const bindingListData = item?.bindingList || []
-    const firstBind = bindingListData?.[0]
-    if (!firstBind) break
-
-    let defaultRole = firstBind?.defaultRole
-    if (!defaultRole && Array.isArray(firstBind?.roles) && firstBind.roles[0]) defaultRole = firstBind.roles[0]
-
-    if (defaultRole) {
-      endfieldUid = String(defaultRole?.roleId || "")
-      nickname = String(defaultRole?.nickname || firstBind?.nickName || "终末地角色")
-      channelName = String(firstBind?.channelName || "官服")
-      recordUid = String(firstBind?.uid || "")
-      if (defaultRole?.serverId) serverId = String(defaultRole.serverId)
-    }
-    break
-  }
+  const endfieldUid = String(picked?.uid || "")
+  const nickname = String(picked?.nickname || "")
+  const channelName = String(picked?.channelName || "")
+  const recordUid = String(picked?.recordUid || "")
+  const serverId = String(picked?.serverId || "1") || "1"
 
   if (!endfieldUid) return { ok: false, message: `${GAME_TITLE} 未找到终末地账号绑定信息` }
 

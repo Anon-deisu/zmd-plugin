@@ -13,6 +13,27 @@ function pickFirst(list) {
   return Array.isArray(list) && list.length ? list[0] : null
 }
 
+function pickBestBindingEntry(item) {
+  const entry = item && typeof item === "object" ? item : {}
+  const bindList = Array.isArray(entry.bindingList) ? entry.bindingList : []
+  const defaultUid = String(entry?.defaultUid ?? entry?.default_uid ?? "").trim()
+
+  if (!bindList.length) return null
+
+  const scored = bindList
+    .map(bind => {
+      const uid = String(bind?.uid ?? "").trim()
+      let score = 0
+      if (uid) score += 10
+      if (defaultUid && uid === defaultUid) score += 100
+      if (bind?.isDefault || bind?.default || bind?.selected || bind?.is_selected) score += 50
+      return { bind, score }
+    })
+    .sort((a, b) => b.score - a.score)
+
+  return scored[0]?.bind || null
+}
+
 export async function getFzAccountForUser(userId) {
   const { account } = await getActiveAccount(userId)
   if (!account) {
@@ -42,7 +63,7 @@ export async function getFzAccountForUser(userId) {
   }
 
   const bindList = Array.isArray(item?.bindingList) ? item.bindingList : []
-  const firstBind = pickFirst(bindList)
+  const firstBind = pickBestBindingEntry(item) || pickFirst(bindList)
 
   const akUidRaw = item?.defaultUid ?? item?.default_uid ?? firstBind?.uid ?? item?.uid
   const akUid = akUidRaw != null ? String(akUidRaw).trim() : ""

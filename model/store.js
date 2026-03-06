@@ -146,6 +146,105 @@ function normalizeAccount(rawAccount) {
   return rawAccount
 }
 
+function pickAccountTextValue(...values) {
+  for (const value of values) {
+    if (value == null) continue
+    const text = String(value).trim()
+    if (text) return text
+  }
+  return ""
+}
+
+function pickAccountUpdatedAt(...values) {
+  let best = 0
+  for (const value of values) {
+    const n = Number(value) || 0
+    if (n > best) best = n
+  }
+  return best
+}
+
+function mergeAccountRecords(baseRaw, incomingRaw) {
+  const base = normalizeAccount({ ...(baseRaw || {}) }) || {}
+  const incoming = normalizeAccount({ ...(incomingRaw || {}) }) || {}
+  const merged = { ...base, ...incoming }
+
+  const textFields = ["uid", "nickname", "serverId", "cred", "token", "recordUid", "deviceToken", "sklandUserId", "channelName"]
+  for (const field of textFields) {
+    merged[field] = pickAccountTextValue(incoming[field], base[field])
+  }
+
+  const updatedAt = pickAccountUpdatedAt(base.updatedAt, incoming.updatedAt)
+  if (updatedAt > 0) merged.updatedAt = updatedAt
+
+  merged.uidOnly = !merged.cred && !!(incoming.uidOnly || base.uidOnly)
+  return merged
+}
+
+function accountScore(account) {
+  const a = account && typeof account === "object" ? account : {}
+  let score = 0
+  if (String(a.cred || "").trim()) score += 100
+  if (String(a.token || "").trim()) score += 20
+  if (String(a.deviceToken || "").trim()) score += 5
+  if (!a.uidOnly) score += 2
+  if (String(a.nickname || "").trim()) score += 1
+  return score
+}
+
+export function findBestAccountByUid(accounts, uid, { requireCred = false } = {}) {
+  const rid = String(uid ?? "").trim()
+  if (!rid) return null
+
+  let matches = (Array.isArray(accounts) ? accounts : []).filter(a => String(a?.uid || "").trim() === rid)
+  if (requireCred) matches = matches.filter(a => String(a?.cred || "").trim())
+  if (!matches.length) return null
+
+  return matches
+    .slice()
+    .sort((a, b) => {
+      const scoreDiff = accountScore(b) - accountScore(a)
+      if (scoreDiff !== 0) return scoreDiff
+      const updatedDiff = (Number(b?.updatedAt) || 0) - (Number(a?.updatedAt) || 0)
+      if (updatedDiff !== 0) return updatedDiff
+      return String(a?.nickname || "").localeCompare(String(b?.nickname || ""), "zh-Hans-CN")
+    })[0]
+}
+
+function dedupeAccounts(accounts) {
+  const out = []
+  const indexMap = []
+  let changed = false
+
+  for (let i = 0; i < (Array.isArray(accounts) ? accounts.length : 0); i++) {
+    const current = normalizeAccount(accounts[i])
+    if (!current) {
+      changed = true
+      indexMap[i] = -1
+      continue
+    }
+
+    const cred = String(current?.cred || "").trim()
+    const uid = String(current?.uid || "").trim()
+
+    let idx = -1
+    if (cred) idx = out.findIndex(a => String(a?.cred || "").trim() === cred)
+    if (idx < 0 && uid) idx = out.findIndex(a => String(a?.uid || "").trim() === uid)
+
+    if (idx < 0) {
+      indexMap[i] = out.length
+      out.push(current)
+      continue
+    }
+
+    out[idx] = mergeAccountRecords(out[idx], current)
+    indexMap[i] = idx
+    changed = true
+  }
+
+  return { accounts: out, changed, indexMap }
+}
+
 function normalizeUserDataShape(parsed) {
   const empty = { accounts: [], active: 0, autoSign: false }
   if (!parsed) return { data: empty, needsSave: false }
@@ -197,10 +296,31 @@ function normalizeUserDataShape(parsed) {
     if (a) normalizedAccounts.push(a)
   }
 
-  data.accounts = normalizedAccounts
+  const deduped = dedupeAccounts(normalizedAccounts)
+  data.accounts = deduped.accounts
   if (data.active == null) data.active = 0
   if (data.autoSign == null) data.autoSign = false
   data.autoSign = !!data.autoSign
+
+  if (normalizedAccounts.length !== accounts.length) needsSave = true
+  if (deduped.changed) needsSave = true
+
+  const activeRaw = data.active
+  const activeText = String(activeRaw ?? "").trim()
+  if (/^-?\d+$/.test(activeText)) {
+    const oldIndex = Number(activeText)
+    if (oldIndex >= 0 && oldIndex < deduped.indexMap.length) {
+      const mappedIndex = deduped.indexMap[oldIndex]
+      if (Number.isInteger(mappedIndex) && mappedIndex >= 0 && mappedIndex !== oldIndex) {
+        data.active = mappedIndex
+        needsSave = true
+      }
+    }
+    if (Number(data.active) >= data.accounts.length && data.accounts.length) {
+      data.active = 0
+      needsSave = true
+    }
+  }
 
   return { data, needsSave }
 }
@@ -270,9 +390,30 @@ export async function upsertAccount(userId, account) {
   const cred = String(account?.cred || "")
   if (!cred) throw new Error("missing cred")
 
-  const idx = data.accounts.findIndex(a => String(a?.cred || "") === cred)
-  if (idx >= 0) data.accounts[idx] = { ...data.accounts[idx], ...account }
-  else data.accounts.push({ ...account })
+  const uid = String(account?.uid || "").trim()
+  const credIdx = data.accounts.findIndex(a => String(a?.cred || "") === cred)
+  const uidIdx = uid ? data.accounts.findIndex(a => String(a?.uid || "").trim() === uid) : -1
+
+  let idx = credIdx >= 0 ? credIdx : uidIdx
+  if (idx >= 0) {
+    const merged = mergeAccountRecords(data.accounts[idx], account)
+
+    if (credIdx >= 0 && uidIdx >= 0 && credIdx !== uidIdx) {
+      merged.uidOnly = !merged.cred && !!merged.uidOnly
+      data.accounts[idx] = mergeAccountRecords(merged, data.accounts[uidIdx])
+      const activeIdx = Number(data.active)
+      data.accounts.splice(uidIdx, 1)
+      if (uidIdx < idx) idx -= 1
+      if (activeIdx === uidIdx || activeIdx === credIdx) data.active = idx
+      else if (activeIdx > uidIdx) data.active = activeIdx - 1
+    } else {
+      data.accounts[idx] = merged
+    }
+  } else {
+    data.accounts.push(mergeAccountRecords({}, account))
+    idx = data.accounts.length - 1
+  }
+
   data.active = idx >= 0 ? idx : data.accounts.length - 1
   await saveUserData(userId, data)
   return data
