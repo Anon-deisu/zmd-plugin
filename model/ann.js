@@ -21,6 +21,7 @@ const SKLAND_CATE_ID_ENDFIELD = 12
 // 保留历史 `Yz:EndUID:*` Key：避免老用户订阅/已读记录丢失。
 const KEY_ANN_SUB_GROUPS = "Yz:EndUID:Ann:SubGroups"
 const KEY_ANN_SEEN_IDS = "Yz:EndUID:Ann:SeenIds"
+const KEY_ANN_SEEN_IDS_PREFIX = "Yz:EndUID:Ann:SeenIds:"
 
 // 进程内缓存（机器人重启后清空）。
 const memCache = {
@@ -311,20 +312,34 @@ export async function clearAnnMemoryCache() {
   memCache.detail.clear()
 }
 
-export async function getSeenAnnIds() {
+function annSeenKey(groupId) {
+  const gid = String(groupId || "").trim()
+  return gid ? `${KEY_ANN_SEEN_IDS_PREFIX}${gid}` : KEY_ANN_SEEN_IDS
+}
+
+export async function getSeenAnnIds(groupId = "") {
+  const gid = String(groupId || "").trim()
   try {
-    const raw = await redis.get(KEY_ANN_SEEN_IDS)
+    const raw = await redis.get(annSeenKey(gid))
     const parsed = raw ? safeJsonParse(raw, []) : []
-    return Array.isArray(parsed) ? parsed.map(x => String(x)) : []
+    if (Array.isArray(parsed) && parsed.length) return parsed.map(x => String(x))
+
+    if (gid) {
+      const legacyRaw = await redis.get(KEY_ANN_SEEN_IDS)
+      const legacyParsed = legacyRaw ? safeJsonParse(legacyRaw, []) : []
+      return Array.isArray(legacyParsed) ? legacyParsed.map(x => String(x)) : []
+    }
+    return []
   } catch {
     return []
   }
 }
 
-export async function setSeenAnnIds(ids) {
+export async function setSeenAnnIds(groupId = "", ids) {
+  const gid = String(groupId || "").trim()
   const list = Array.isArray(ids) ? ids.map(x => String(x)).filter(Boolean) : []
   try {
-    await redis.set(KEY_ANN_SEEN_IDS, JSON.stringify(list))
+    await redis.set(annSeenKey(gid), JSON.stringify(list))
   } catch {}
 }
 
@@ -342,34 +357,36 @@ export async function runAnnPushTask() {
     const list = await fetchAnnList({ pageSize, useCache: false })
     if (!list.length) return
 
-    const seen = await getSeenAnnIds()
     const ids = list.map(x => String(x.id)).filter(Boolean)
-    if (!seen.length) {
-      await setSeenAnnIds(ids)
-      return
-    }
-
-    const newIds = ids.filter(id => !seen.includes(id))
-    if (!newIds.length) return
-
-    await setSeenAnnIds(uniqBy([...newIds, ...seen], x => x).slice(0, 200))
-
-    const lines = [
-      `${GAME_TITLE} 新公告 ${newIds.length} 条：`,
-      ...newIds
-        .map(id => {
-          const item = list.find(x => String(x.id) === id)
-          return item ? `- (${id}) ${item.title || ""}` : `- (${id})`
-        })
-        .slice(0, 10),
-      `${GAME_TITLE} 查看：${cfg.cmd?.prefix || "#zmd"}公告 <id>`,
-    ].join("\n")
-
     for (const gid of groups) {
+      const groupId = String(gid || "").trim()
+      if (!groupId) continue
+
+      const seen = await getSeenAnnIds(groupId)
+      if (!seen.length) {
+        await setSeenAnnIds(groupId, ids)
+        continue
+      }
+
+      const newIds = ids.filter(id => !seen.includes(id))
+      if (!newIds.length) continue
+
+      const lines = [
+        `${GAME_TITLE} 新公告 ${newIds.length} 条：`,
+        ...newIds
+          .map(id => {
+            const item = list.find(x => String(x.id) === id)
+            return item ? `- (${id}) ${item.title || ""}` : `- (${id})`
+          })
+          .slice(0, 10),
+        `${GAME_TITLE} 查看：${cfg.cmd?.prefix || "#zmd"}公告 <id>`,
+      ].join("\n")
+
       try {
-        await Bot.pickGroup(String(gid)).sendMsg(lines)
+        await Bot.pickGroup(groupId).sendMsg(lines)
+        await setSeenAnnIds(groupId, uniqBy([...newIds, ...seen], x => x).slice(0, 200))
       } catch (err) {
-        logger?.warn?.("[zmd-plugin] 公告推送失败", gid, err)
+        logger?.warn?.("[zmd-plugin] 公告推送失败", groupId, err)
       }
     }
   } finally {
