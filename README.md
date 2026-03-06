@@ -30,43 +30,70 @@
 | 配置文件 | `config/zmd-plugin.yaml` |
 | 反馈 / 交流群 | `1084459856`（指令：`#反馈`） |
 
-## 目录
+<a id="quick-nav"></a>
+## 快速导航
 
-- [功能概览](#overview)
-  - [终末地能力](#overview-endfield)
-  - [明日方舟能力](#overview-fz)
-  - [辅助能力](#overview-tools)
-- [快速开始](#quick-start)
-- [安装](#installation)
-  - [方式一：Git 安装](#installation-git)
-  - [方式二：手动安装](#installation-manual)
-- [角色数据接口（统一后端 / 本地）](#api)
-  - [不配置 API 会怎样](#api-without-config)
-  - [当前支持的数据源](#api-sources)
-  - [查看 / 切换数据源](#api-switch)
-  - [配置统一后端](#api-unified)
-  - [配置本地接口](#api-local)
-- [指令速查](#commands)
-  - [账号](#commands-account)
-  - [查询](#commands-query)
-  - [终末地抽卡记录](#commands-gachalog)
-  - [公告](#commands-ann)
-  - [Wiki 图鉴](#commands-wiki)
-  - [签到 / 其他](#commands-other)
-  - [明日方舟（#fz）](#commands-fz)
-- [配置说明](#config)
-- [数据与隐私](#data-and-privacy)
-  - [存储说明](#privacy-storage)
-  - [本地目录](#privacy-paths)
-- [常见问题](#faq)
-  - [依赖缺失](#faq-deps)
-  - [面板命令冲突](#faq-panel-conflict)
-  - [UID-only 查不到角色](#faq-uid-only)
-  - [统一后端 401](#faq-api-401)
-- [免责声明](#disclaimer)
-- [仓库与参考](#references)
-  - [仓库](#references-repo)
-  - [参考项目](#references-projects)
+> 点击下方分组可直接跳转到对应章节或小节。
+
+<table>
+  <tr>
+    <td valign="top" width="33%">
+      <strong>开始使用</strong><br/>
+      <a href="#overview">功能概览</a><br/>
+      <a href="#quick-start">快速开始</a><br/>
+      <a href="#installation">安装</a><br/>
+      <a href="#installation-git">Git 安装</a><br/>
+      <a href="#installation-manual">手动安装</a>
+    </td>
+    <td valign="top" width="33%">
+      <strong>数据与配置</strong><br/>
+      <a href="#api">角色数据接口</a><br/>
+      <a href="#api-sources">数据源说明</a><br/>
+      <a href="#api-switch">切换数据源</a><br/>
+      <a href="#api-unified">配置统一后端</a><br/>
+      <a href="#api-local">配置本地接口</a><br/>
+      <a href="#config">配置说明</a>
+    </td>
+    <td valign="top" width="33%">
+      <strong>命令与功能</strong><br/>
+      <a href="#commands">指令速查</a><br/>
+      <a href="#commands-account">账号</a><br/>
+      <a href="#commands-query">查询</a><br/>
+      <a href="#commands-gachalog">终末地抽卡记录</a><br/>
+      <a href="#commands-fz">明日方舟（#fz）</a><br/>
+      <a href="#commands-wiki">Wiki 图鉴</a>
+    </td>
+  </tr>
+  <tr>
+    <td valign="top" width="33%">
+      <strong>说明与排障</strong><br/>
+      <a href="#data-and-privacy">数据与隐私</a><br/>
+      <a href="#privacy-storage">存储说明</a><br/>
+      <a href="#privacy-paths">本地目录</a><br/>
+      <a href="#faq">常见问题</a><br/>
+      <a href="#faq-deps">依赖缺失</a><br/>
+      <a href="#faq-api-401">统一后端 401</a>
+    </td>
+    <td valign="top" width="33%">
+      <strong>补充内容</strong><br/>
+      <a href="#overview-endfield">终末地能力</a><br/>
+      <a href="#overview-fz">明日方舟能力</a><br/>
+      <a href="#overview-tools">辅助能力</a><br/>
+      <a href="#commands-ann">公告</a><br/>
+      <a href="#commands-other">签到 / 其他</a><br/>
+      <a href="#disclaimer">免责声明</a>
+    </td>
+    <td valign="top" width="33%">
+      <strong>仓库信息</strong><br/>
+      <a href="#references">仓库与参考</a><br/>
+      <a href="#references-repo">仓库</a><br/>
+      <a href="#references-projects">参考项目</a><br/>
+      <a href="https://github.com/Anon-deisu/zmd-plugin">GitHub 仓库</a><br/>
+      <a href="https://github.com/Anon-deisu/zmd-plugin/stargazers">Star 页面</a><br/>
+      <a href="https://github.com/Anon-deisu/zmd-plugin/releases">Release 页面</a>
+    </td>
+  </tr>
+</table>
 
 <a id="overview"></a>
 ## 功能概览
@@ -93,6 +120,8 @@
 - 公告订阅与定时推送
 - 状态统计、更新日志、环境诊断
 
+<p align="right"><a href="#quick-nav">返回导航</a></p>
+
 <a id="quick-start"></a>
 ## 快速开始
 
@@ -108,6 +137,8 @@
    - `#管理员面板`
    - `#zmd抽卡记录`
 6. 查看完整帮助：`#zmd帮助`
+
+<p align="right"><a href="#quick-nav">返回导航</a></p>
 
 <a id="installation"></a>
 ## 安装
@@ -145,6 +176,8 @@ pnpm add qrcode node-fetch yaml puppeteer
 ```
 
 4. 重启机器人
+
+<p align="right"><a href="#quick-nav">返回导航</a></p>
 
 <a id="api"></a>
 ## 角色数据接口（统一后端 / 本地）
@@ -229,6 +262,8 @@ friendApi:
   baseUrl: "http://127.0.0.1:18080"
   bearer: "your_token"
 ```
+
+<p align="right"><a href="#quick-nav">返回导航</a></p>
 
 <a id="commands"></a>
 ## 指令速查
@@ -318,6 +353,8 @@ friendApi:
 - `#fz导出抽卡记录`
 - `#fz删除抽卡记录`
 
+<p align="right"><a href="#quick-nav">返回导航</a></p>
+
 <a id="config"></a>
 ## 配置说明
 
@@ -335,6 +372,8 @@ friendApi:
 | `fz.autoSign.*` | 明日方舟自动签到任务配置 |
 
 修改配置后建议重启机器人。
+
+<p align="right"><a href="#quick-nav">返回导航</a></p>
 
 <a id="data-and-privacy"></a>
 ## 数据与隐私
@@ -359,6 +398,8 @@ friendApi:
 | `temp/zmd-plugin/` | 二维码等临时文件 |
 | `plugins/zmd-plugin/resources/endfield/itemiconbig/` | 武器图标缓存 |
 | `plugins/zmd-plugin/resources/endfield/charicon/` | 角色图标缓存 |
+
+<p align="right"><a href="#quick-nav">返回导航</a></p>
 
 <a id="faq"></a>
 ## 常见问题
@@ -393,12 +434,16 @@ Friend API 通常只提供“名片展示位”角色列表。请先把目标角
   - `#统一后端frameworktoken <token>`
   - `#统一后端token <token>`
 
+<p align="right"><a href="#quick-nav">返回导航</a></p>
+
 <a id="disclaimer"></a>
 ## 免责声明
 
 本项目为非官方项目，与鹰角网络（Hypergryph）及其旗下组织 / 团体 / 工作室没有任何关联。游戏图片与数据版权归各自权利人所有。
 
 本插件按“现状”提供，不保证可用性、稳定性或数据准确性；使用过程中造成的任何数据损失、功能异常或经济损失均由用户自行承担。
+
+<p align="right"><a href="#quick-nav">返回导航</a></p>
 
 <a id="references"></a>
 ## 仓库与参考
@@ -419,3 +464,5 @@ Friend API 通常只提供“名片展示位”角色列表。请先把目标角
 - biligame wiki：`https://wiki.biligame.com/zmd/`
 
 如你计划分发，请注意相关上游仓库的许可证要求。
+
+<p align="right"><a href="#quick-nav">返回导航</a></p>
