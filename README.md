@@ -32,19 +32,46 @@
 
 ## 目录
 
-- 功能概览
-- 快速开始
-- 安装
-- 角色数据接口（统一后端 / 本地）
-- 指令速查
-- 配置说明
-- 数据与隐私
-- 常见问题
-- 免责声明
-- 仓库与参考
+- [功能概览](#overview)
+  - [终末地能力](#overview-endfield)
+  - [明日方舟能力](#overview-fz)
+  - [辅助能力](#overview-tools)
+- [快速开始](#quick-start)
+- [安装](#installation)
+  - [方式一：Git 安装](#installation-git)
+  - [方式二：手动安装](#installation-manual)
+- [角色数据接口（统一后端 / 本地）](#api)
+  - [不配置 API 会怎样](#api-without-config)
+  - [当前支持的数据源](#api-sources)
+  - [查看 / 切换数据源](#api-switch)
+  - [配置统一后端](#api-unified)
+  - [配置本地接口](#api-local)
+- [指令速查](#commands)
+  - [账号](#commands-account)
+  - [查询](#commands-query)
+  - [终末地抽卡记录](#commands-gachalog)
+  - [公告](#commands-ann)
+  - [Wiki 图鉴](#commands-wiki)
+  - [签到 / 其他](#commands-other)
+  - [明日方舟（#fz）](#commands-fz)
+- [配置说明](#config)
+- [数据与隐私](#data-and-privacy)
+  - [存储说明](#privacy-storage)
+  - [本地目录](#privacy-paths)
+- [常见问题](#faq)
+  - [依赖缺失](#faq-deps)
+  - [面板命令冲突](#faq-panel-conflict)
+  - [UID-only 查不到角色](#faq-uid-only)
+  - [统一后端 401](#faq-api-401)
+- [免责声明](#disclaimer)
+- [仓库与参考](#references)
+  - [仓库](#references-repo)
+  - [参考项目](#references-projects)
 
+<a id="overview"></a>
 ## 功能概览
 
+<a id="overview-endfield"></a>
 ### 终末地能力
 
 - 账号：私聊扫码登录 / 手动绑定 `cred` 或 `token` / 仅绑定 UID（面板查询）
@@ -52,18 +79,21 @@
 - 抽卡记录：更新 / 全量更新 / 查看 / 导入 / 导出 / 删除
 - 图鉴：角色列表、武器列表、卡池、角色 / 武器图鉴、技能 / 天赋 / 潜能分项查询
 
+<a id="overview-fz"></a>
 ### 明日方舟能力（`#fz`）
 
 - 森空岛签到 / 全部签到 / 自动签到
 - 抽卡记录工具链：更新、全量更新、导入、导出、删除、查看
 - 抽卡记录按 `限定 / 常驻 / 中坚` 聚合展示
 
+<a id="overview-tools"></a>
 ### 辅助能力
 
 - 统一后端 / 本地 Friend API 切换
 - 公告订阅与定时推送
 - 状态统计、更新日志、环境诊断
 
+<a id="quick-start"></a>
 ## 快速开始
 
 如果你只想最快跑起来，按下面顺序即可：
@@ -79,8 +109,10 @@
    - `#zmd抽卡记录`
 6. 查看完整帮助：`#zmd帮助`
 
+<a id="installation"></a>
 ## 安装
 
+<a id="installation-git"></a>
 ### 方式一：Git 安装（推荐）
 
 在 `TRSS-Yunzai` 根目录执行：
@@ -101,6 +133,7 @@ git pull
 - `#zmd更新插件`
 - `#zmd强制更新插件`
 
+<a id="installation-manual"></a>
 ### 方式二：手动安装
 
 1. 下载 / 解压本仓库到 `TRSS-Yunzai/plugins/` 下
@@ -113,6 +146,7 @@ pnpm add qrcode node-fetch yaml puppeteer
 
 4. 重启机器人
 
+<a id="api"></a>
 ## 角色数据接口（统一后端 / 本地）
 
 面板中的这些详细数据依赖角色数据接口：
@@ -122,18 +156,21 @@ pnpm add qrcode node-fetch yaml puppeteer
 - 武器基质词条
 - UID-only 面板补完数据
 
+<a id="api-without-config"></a>
 ### 不配置 API 会怎样？
 
 - 已登录账号：仍可使用基础卡片 / 面板能力
 - 仅绑定 UID 的账号：面板功能可能不可用或信息不完整
 - Friend API 通常只返回名片展示位角色，因此 UID-only 面板也可能只能查到展示位角色
 
+<a id="api-sources"></a>
 ### 当前支持的数据源
 
 - 统一后端（默认）：通过统一后端提供的 `/api/friend/*` 接口获取
 - 本地接口：通过本地部署的 Friend API 获取，例如 `http://127.0.0.1:18080`
 - 统一后端官网登录 / 获取凭证：`https://end.shallow.ink/`
 
+<a id="api-switch"></a>
 ### 查看 / 切换数据源
 
 - 查看当前配置：`#数据源`
@@ -143,6 +180,7 @@ pnpm add qrcode node-fetch yaml puppeteer
   - `#数据源切换 统一后端`
   - `#数据源切换 自动`
 
+<a id="api-unified"></a>
 ### 配置统一后端
 
 | 操作 | 命令 |
@@ -175,6 +213,7 @@ friendApi:
   # unifiedAnonymousToken: "your_anon_token"
 ```
 
+<a id="api-local"></a>
 ### 配置本地接口
 
 | 操作 | 命令 |
@@ -191,10 +230,12 @@ friendApi:
   bearer: "your_token"
 ```
 
+<a id="commands"></a>
 ## 指令速查
 
 默认前缀：`#zmd`
 
+<a id="commands-account"></a>
 ### 账号
 
 - `#zmd登录`：扫码登录，仅私聊
@@ -204,6 +245,7 @@ friendApi:
 - `#zmd切换<序号|UID>`：切换当前活跃账号
 - `#zmd删除<序号|UID>`：删除绑定账号
 
+<a id="commands-query"></a>
 ### 查询
 
 - `#zmd每日<@用户>`
@@ -213,6 +255,7 @@ friendApi:
 - `#zmd面板<角色>`：兼容旧用法
 - `#zmd基建<@用户>`
 
+<a id="commands-gachalog"></a>
 ### 终末地抽卡记录
 
 - 更新：`#zmd更新抽卡记录<UID/@他人>`
@@ -225,6 +268,7 @@ friendApi:
 - 删除：`#zmd删除抽卡记录`
 - 图标补全：`#zmd更新武器图标<UID>`（可加 `强制`；`全部` 仅 master）
 
+<a id="commands-ann"></a>
 ### 公告
 
 - `#zmd公告<id>`：不填 `id` 时显示列表
@@ -232,6 +276,7 @@ friendApi:
 - `#zmd取消订阅公告`
 - `#zmd清理公告缓存`：仅清理内存缓存，不影响订阅 / 已读，仅 master
 
+<a id="commands-wiki"></a>
 ### Wiki 图鉴
 
 - `#zmd角色列表`
@@ -245,6 +290,7 @@ friendApi:
 - `#zmd<名称>专武`
 - `#zmd<名称>武器`
 
+<a id="commands-other"></a>
 ### 签到 / 其他
 
 - `#zmd签到`
@@ -257,6 +303,7 @@ friendApi:
 - `#zmd强制更新插件`（仅 master）
 - `#反馈`
 
+<a id="commands-fz"></a>
 ### 明日方舟（`#fz`）
 
 说明：复用本插件的森空岛绑定（`#zmd登录` / `#zmd绑定`），命令前缀固定为 `#fz`。
@@ -271,6 +318,7 @@ friendApi:
 - `#fz导出抽卡记录`
 - `#fz删除抽卡记录`
 
+<a id="config"></a>
 ## 配置说明
 
 首次加载后会自动生成：`config/zmd-plugin.yaml`
@@ -288,14 +336,17 @@ friendApi:
 
 修改配置后建议重启机器人。
 
+<a id="data-and-privacy"></a>
 ## 数据与隐私
 
+<a id="privacy-storage"></a>
 ### 存储说明
 
 - 账号绑定信息主要存储在 Redis
 - 本插件运行时会写入缓存 / 临时文件，用于加速、容错和渲染
 - 删除这些缓存后，后续使用时会自动重新生成
 
+<a id="privacy-paths"></a>
 ### 本地目录
 
 | 路径 | 用途 |
@@ -309,8 +360,10 @@ friendApi:
 | `plugins/zmd-plugin/resources/endfield/itemiconbig/` | 武器图标缓存 |
 | `plugins/zmd-plugin/resources/endfield/charicon/` | 角色图标缓存 |
 
+<a id="faq"></a>
 ## 常见问题
 
+<a id="faq-deps"></a>
 ### 1. 提示缺少依赖 `qrcode` / `node-fetch` / `yaml` / `puppeteer`
 
 在 `TRSS-Yunzai` 根目录执行：
@@ -321,14 +374,17 @@ pnpm add qrcode node-fetch yaml puppeteer
 
 然后重启机器人。
 
+<a id="faq-panel-conflict"></a>
 ### 2. `#<角色>面板` 与其他插件冲突
 
 仍可使用旧用法：`#zmd面板<角色>`。
 
+<a id="faq-uid-only"></a>
 ### 3. UID-only 绑定后查不到想看的角色
 
 Friend API 通常只提供“名片展示位”角色列表。请先把目标角色放到名片展示位，再查询面板。
 
+<a id="faq-api-401"></a>
 ### 4. 统一后端提示 401 / 无法获取数据
 
 - 统一后端可能要求不同鉴权方式：`Bearer / API Key / Framework Token / 匿名令牌`
@@ -337,18 +393,22 @@ Friend API 通常只提供“名片展示位”角色列表。请先把目标角
   - `#统一后端frameworktoken <token>`
   - `#统一后端token <token>`
 
+<a id="disclaimer"></a>
 ## 免责声明
 
 本项目为非官方项目，与鹰角网络（Hypergryph）及其旗下组织 / 团体 / 工作室没有任何关联。游戏图片与数据版权归各自权利人所有。
 
 本插件按“现状”提供，不保证可用性、稳定性或数据准确性；使用过程中造成的任何数据损失、功能异常或经济损失均由用户自行承担。
 
+<a id="references"></a>
 ## 仓库与参考
 
+<a id="references-repo"></a>
 ### 仓库
 
 - 主仓库：`https://github.com/Anon-deisu/zmd-plugin`
 
+<a id="references-projects"></a>
 ### 参考项目
 
 - EndUID：`https://github.com/Loping151/EndUID`
