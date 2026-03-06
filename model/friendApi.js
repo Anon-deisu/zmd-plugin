@@ -283,10 +283,32 @@ function buildWeaponTerms(data) {
   return out
 }
 
+function uniqStrings(list, limit = 0) {
+  const out = []
+  const seen = new Set()
+  for (const item of Array.isArray(list) ? list : []) {
+    const text = String(item || "").trim()
+    if (!text || seen.has(text)) continue
+    seen.add(text)
+    out.push(text)
+    if (limit > 0 && out.length >= limit) break
+  }
+  return out
+}
+
+function extractBreakPhase(value) {
+  const s = String(value || "").trim()
+  const m = s.match(/(?:break|equipBreak)T?(\d+)/i)
+  return m?.[1] ? toInt(m[1], 0) : 0
+}
+
 function buildCharView(data) {
   const d = data && typeof data === "object" ? data : {}
   const char = d.char && typeof d.char === "object" ? d.char : {}
   const profile = char.char_profile && typeof char.char_profile === "object" ? char.char_profile : {}
+  const processed = d.processed && typeof d.processed === "object" ? d.processed : {}
+  const growth = processed.char_growth && typeof processed.char_growth === "object" ? processed.char_growth : {}
+  const talent = char.talent && typeof char.talent === "object" ? char.talent : {}
 
   const level = toInt(char.level, 0)
   const potential = toInt(char.potential_level, 0)
@@ -333,7 +355,7 @@ function buildCharView(data) {
     if (!id || lv <= 0) continue
     const name = pickPreferredName({ nameCn: skill.name_cn, name: skill.name, rawName: skill.raw_name || id })
     if (!name) continue
-    skillViews.push({ id, name, level: lv, maxLevel: maxLv })
+    skillViews.push({ id, rawName: String(skill.raw_name || id).trim(), name, level: lv, maxLevel: maxLv })
   }
 
   // Prefer skills that can actually level up; skip empty placeholders.
@@ -348,10 +370,43 @@ function buildCharView(data) {
     if (uniq.length >= 8) break
   }
 
+  const breakNode = talent.latest_break_node_named && typeof talent.latest_break_node_named === "object" ? talent.latest_break_node_named : {}
+  const breakName = pickPreferredName({ nameCn: breakNode.name_cn, name: breakNode.name, rawName: breakNode.raw_name })
+  const breakPhase = extractBreakPhase(breakNode.raw_name || talent.latest_break_node || breakNode.id)
+
+  const attrNodeNames = uniqStrings(
+    (Array.isArray(talent.attr_nodes_named) ? talent.attr_nodes_named : []).map(item =>
+      pickPreferredName({ nameCn: item?.name_cn, name: item?.name, rawName: item?.raw_name }),
+    ),
+    4,
+  )
+  const passiveSkillNames = uniqStrings(
+    (Array.isArray(talent.latest_passive_skill_nodes_named) ? talent.latest_passive_skill_nodes_named : []).map(item =>
+      pickPreferredName({ nameCn: item?.name_cn, name: item?.name, rawName: item?.raw_name }),
+    ),
+    4,
+  )
+  const factorySkillNames = uniqStrings(
+    (Array.isArray(talent.latest_factory_skill_nodes_named) ? talent.latest_factory_skill_nodes_named : []).map(item =>
+      pickPreferredName({ nameCn: item?.name_cn, name: item?.name, rawName: item?.raw_name }),
+    ),
+    2,
+  )
+  const tags = uniqStrings([breakName, ...passiveSkillNames, ...attrNodeNames, ...factorySkillNames], 8)
+
   return {
     level,
     potential,
     mainAttrType,
+    rarity: toInt(growth.rarity, 0),
+    professionId: toInt(growth.profession, -1),
+    weaponTypeId: toInt(growth.weapon_type, -1),
+    breakPhase,
+    breakName,
+    attrNodes: attrNodeNames,
+    passiveSkills: passiveSkillNames,
+    factorySkills: factorySkillNames,
+    tags,
     weapon: weaponView,
     equips: equipViews,
     tacticalItem,

@@ -52,6 +52,58 @@ function normalizePanelKey(raw) {
     .replace(/[^0-9a-z\u4e00-\u9fff]+/gi, "")
 }
 
+function buildSkillShortName(raw) {
+  const text = String(raw || "").trim()
+  if (!text) return "技"
+
+  const cjk = text.replace(/[^\u4e00-\u9fff]+/g, "")
+  if (cjk) return cjk.slice(0, 2)
+
+  const words = text
+    .replace(/[^0-9a-z]+/gi, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (words.length >= 2) return words.slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("")
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase()
+  return text.slice(0, 2)
+}
+
+function findWikiCharacterEntry(listData, names = []) {
+  const groups = listData?.characters && typeof listData.characters === "object" ? listData.characters : {}
+  const entries = Object.values(groups).flatMap(list => (Array.isArray(list) ? list : []))
+  const keys = Array.from(new Set((Array.isArray(names) ? names : []).map(normalizePanelKey).filter(Boolean)))
+  if (!entries.length || !keys.length) return null
+
+  for (const key of keys) {
+    const exact = entries.find(item => normalizePanelKey(item?.name) === key)
+    if (exact) return exact
+  }
+
+  for (const key of keys) {
+    const fuzzy = entries.find(item => {
+      const name = normalizePanelKey(item?.name)
+      return name && (name.includes(key) || key.includes(name))
+    })
+    if (fuzzy) return fuzzy
+  }
+
+  return null
+}
+
+function deriveWeaponTypeText(charView) {
+  const raw = String(charView?.weapon?.rawName || "").trim().toLowerCase()
+  if (!raw) return "-"
+  if (raw.includes("sword")) return "剑"
+  if (raw.includes("blade") || raw.includes("katana")) return "刀"
+  if (raw.includes("staff") || raw.includes("wand")) return "法杖"
+  if (raw.includes("spear") || raw.includes("lance")) return "长枪"
+  if (raw.includes("bow")) return "弓"
+  if (raw.includes("gun") || raw.includes("rifle") || raw.includes("pistol")) return "枪械"
+  return "-"
+}
+
 function isExactResolvedAlias(resolved, query) {
   const q = normalizePanelKey(query)
   if (!q) return false
@@ -482,6 +534,12 @@ export class card extends plugin {
           return ""
         }
 
+        let wikiChar = null
+        try {
+          const listData = await ensureListData()
+          wikiChar = findWikiCharacterEntry(listData, [charName, resolvedName, query])
+        } catch {}
+
         // UID-only: try to fill character illustration URL for the panel background.
         let charUrl = pickImageUrl(resolved?.entry)
         if (!charUrl) {
@@ -491,41 +549,7 @@ export class card extends plugin {
         }
 
         // Last resort: use wiki list avatar_url (usually smaller, but better than blank).
-        if (!charUrl) {
-          try {
-            const listData = await ensureListData()
-            const qk = normalizeKey(charName)
-            const groups = listData?.characters && typeof listData.characters === "object" ? listData.characters : {}
-            let found = null
-
-            if (qk) {
-              for (const entries of Object.values(groups)) {
-                for (const item of Array.isArray(entries) ? entries : []) {
-                  const nk = normalizeKey(item?.name)
-                  if (nk && nk === qk) {
-                    found = item
-                    break
-                  }
-                }
-                if (found) break
-              }
-              if (!found) {
-                for (const entries of Object.values(groups)) {
-                  for (const item of Array.isArray(entries) ? entries : []) {
-                    const nk = normalizeKey(item?.name)
-                    if (nk && (nk.includes(qk) || qk.includes(nk))) {
-                      found = item
-                      break
-                    }
-                  }
-                  if (found) break
-                }
-              }
-            }
-
-            if (found) charUrl = pickImageUrl(found)
-          } catch {}
-        }
+        if (!charUrl && wikiChar) charUrl = pickImageUrl(wikiChar)
 
         if (!charUrl) charUrl = pluginResourcesRelPath("enduid/texture2d/end_daily_logo.png")
 
@@ -543,10 +567,19 @@ export class card extends plugin {
           nature: "自然",
           natural: "自然",
         }
-        const property = propertyMap[mainAttr] || "-"
+        const property = String(wikiChar?.attribute || propertyMap[mainAttr] || "-")
+        const profession = String(wikiChar?.profession || "-")
+        const weaponType = deriveWeaponTypeText(cv)
+        const rarityStars = Array(Math.max(0, Number(wikiChar?.rarity || cv.rarity || 0))).fill(1)
+        const charTags = Array.isArray(cv.tags) ? cv.tags.slice(0, 8).map(tag => String(tag || "").trim()).filter(Boolean) : []
 
         const skills = Array.isArray(cv.skills)
-          ? cv.skills.slice(0, 8).map(s => ({ name: String(s?.name || ""), icon: "", level: Number(s?.level) || 1 }))
+          ? cv.skills.slice(0, 8).map(s => ({
+              name: String(s?.name || ""),
+              shortName: buildSkillShortName(s?.name),
+              icon: "",
+              level: Number(s?.level) || 1,
+            }))
           : []
 
         const weaponRaw = String(cv.weapon?.rawName || "").trim()
@@ -577,7 +610,9 @@ export class card extends plugin {
         const buildEquip = (slot, slotName) => {
           const eq = equipBySlot.get(slot)
           if (!eq) return null
-          return { slotName, name: String(eq.name || placeholder), icon: "", level: "" }
+          const rawName = String(eq?.rawName || "").trim()
+          const icon = rawName ? pluginResourcesRelPath(`endfield/itemiconbig/${rawName}.png`) : ""
+          return { slotName, name: String(eq.name || placeholder), icon, level: "" }
         }
 
         const bodyEquip = buildEquip(1, "护甲")
@@ -585,7 +620,9 @@ export class card extends plugin {
           .filter(Boolean)
 
         if (cv.tacticalItem?.name) {
-          equipSlots.push({ slotName: "战术道具", name: String(cv.tacticalItem.name), icon: "", level: "" })
+          const tacticalRaw = String(cv.tacticalItem?.rawName || "").trim()
+          const tacticalIcon = tacticalRaw ? pluginResourcesRelPath(`endfield/itemiconbig/${tacticalRaw}.png`) : ""
+          equipSlots.push({ slotName: "战术道具", name: String(cv.tacticalItem.name), icon: tacticalIcon, level: "" })
         }
 
         // Reuse the same equip detail filling logic.
@@ -673,11 +710,6 @@ export class card extends plugin {
           } catch {}
         }
 
-        const rarityStars = []
-        const profession = "-"
-        const weaponType = "-"
-        const charTags = []
-
         const img = await renderImg(
           "enduid/panel",
           {
@@ -691,7 +723,7 @@ export class card extends plugin {
             weaponType,
             charTags,
             level: Number(cv.level) || 0,
-            evolvePhase: 0,
+            evolvePhase: Number(cv.breakPhase) || 0,
             potential: Number(cv.potential) || 0,
             skills,
             stats,
@@ -1023,6 +1055,7 @@ export class card extends plugin {
       const lv = sid && userSkills?.[sid]?.level ? Number(userSkills[sid].level) : 1
       return {
         name: String(s?.name || sid || "技能"),
+        shortName: buildSkillShortName(s?.name || sid),
         icon: String(s?.iconUrl || "").trim(),
         level: lv,
       }

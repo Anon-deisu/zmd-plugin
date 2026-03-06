@@ -172,9 +172,11 @@
 
   .enduid-panel .enduid-skillbar .enduid-skills .talent-item {
     flex: 0 0 auto;
+    width: 52px;
   }
 
   .enduid-panel .enduid-skillbar .enduid-skills .talent-icon {
+    position: relative;
     width: 52px;
     height: 52px;
     margin: 0;
@@ -195,6 +197,35 @@
     font-size: 12px;
     margin-left: -11px;
     border-radius: 4px;
+  }
+
+  .enduid-panel .enduid-skillbar .enduid-skills .talent-fallback {
+    position: absolute;
+    inset: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.1;
+    font-weight: 700;
+    color: #f3e7c7;
+    background: rgba(0, 0, 0, 0.48);
+    border: 1px solid rgba(219, 196, 146, 0.75);
+    border-radius: 8px;
+    padding: 2px;
+    box-sizing: border-box;
+  }
+
+  .enduid-panel .enduid-skillbar .enduid-skills .talent-name {
+    margin-top: 4px;
+    font-size: 10px;
+    line-height: 1.2;
+    text-align: center;
+    color: #d8c69f;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.85);
+    white-space: normal;
+    word-break: break-all;
   }
 
   /* Weapon terms: show only existing lines (no placeholders). */
@@ -275,9 +306,14 @@
         {{each skills skill}}
         <div class="talent-item">
           <div class="talent-icon">
+            {{if skill.icon}}
             <div class="talent-icon-img" style="background-image:url({{skill.icon}})"></div>
+            {{else}}
+            <div class="talent-fallback">{{skill.shortName || skill.name || "技"}}</div>
+            {{/if}}
             <strong>{{skill.level}}</strong>
           </div>
+          <div class="talent-name">{{skill.name || skill.shortName || "技能"}}</div>
         </div>
         {{/each}}
       </div>
