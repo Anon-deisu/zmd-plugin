@@ -254,15 +254,46 @@ function formatRecoveryTime({ maxTs, currentTs, staminaCur, staminaTotal }) {
 }
 
 function formatAwards(res) {
-  const awards = res?.data?.awards || []
-  if (!Array.isArray(awards) || !awards.length) return "（暂无奖励信息）"
-  return awards
-    .map(a => {
-      const name = a?.resource?.name || a?.resource?.id || "未知"
-      const count = a?.count ?? 0
-      return `- ${name} × ${count}`
-    })
-    .join("\n")
+  const data = res?.data && typeof res.data === "object" ? res.data : {}
+
+  const items = []
+
+  // Endfield attendance response usually provides awardIds + resourceInfoMap.
+  const awardIds = Array.isArray(data.awardIds) ? data.awardIds : []
+  const resourceInfoMap = data.resourceInfoMap && typeof data.resourceInfoMap === "object" ? data.resourceInfoMap : {}
+  for (const award of awardIds) {
+    const id = String(award?.id ?? award?.resourceId ?? award?.resource_id ?? "").trim()
+    const info = (id && (resourceInfoMap[id] || resourceInfoMap[String(id)])) || {}
+    const name = String(info?.name || award?.name || award?.resource?.name || award?.resourceName || award?.resource_id || id || "未知").trim()
+    const count = award?.count ?? info?.count ?? 0
+    items.push({ name, count })
+  }
+
+  // Fallback for other attendance APIs that return data.awards / data.rewards.
+  const awards = Array.isArray(data.awards) ? data.awards : Array.isArray(data.rewards) ? data.rewards : []
+  for (const award of awards) {
+    const name = String(award?.resource?.name || award?.name || award?.resourceName || award?.resource?.id || award?.resource_id || "未知").trim()
+    const count = award?.count ?? award?.num ?? 0
+    items.push({ name, count })
+  }
+
+  const uniq = []
+  const seen = new Set()
+  for (const item of items) {
+    const name = String(item?.name || "").trim()
+    const count = item?.count ?? 0
+    const key = `${name}|${count}`
+    if (!name || seen.has(key)) continue
+    seen.add(key)
+    uniq.push({ name, count })
+  }
+
+  if (!uniq.length) return "（暂无奖励信息）"
+  return uniq.map(item => `- ${item.name} × ${item.count}`).join("\n")
+}
+
+function isAlreadySigned(res) {
+  return res?.code === 10001 || !!(res?.data && (res.data.already_signed || res.data.alreadySigned))
 }
 
 async function ensureSklandUserId(cred, account, userId) {
@@ -387,11 +418,11 @@ async function runAutoSignAll() {
           await recordFail(1)
           return `${userId}: 请求失败`
         }
+        if (isAlreadySigned(res)) return `${userId}: ☑️ 已签 ${account.nickname || account.uid}`
         if (res.code === 0) {
           await recordSuccess(1)
           return `${userId}: ✅ ${account.nickname || account.uid}`
         }
-        if (res.code === 10001) return `${userId}: ☑️ 已签 ${account.nickname || account.uid}`
 
         await recordFail(1)
         return `${userId}: ❌ ${account.nickname || account.uid} ${res.message || res.code}`
@@ -1559,13 +1590,14 @@ export class enduid extends plugin {
       return true
     }
 
+    if (isAlreadySigned(res)) {
+      await e.reply(`${GAME_TITLE} ☑️ [${account.nickname || account.uid}] ${res?.data?.message || "今日已签到"}`, true)
+      return true
+    }
+
     if (res.code === 0) {
       await recordSuccess(1)
       await e.reply(`${GAME_TITLE} ✅ [${account.nickname || account.uid}] 签到完成\n${formatAwards(res)}`, true)
-      return true
-    }
-    if (res.code === 10001) {
-      await e.reply(`${GAME_TITLE} ☑️ [${account.nickname || account.uid}] 今日已签到`, true)
       return true
     }
     await recordFail(1)
@@ -1637,6 +1669,15 @@ export class enduid extends plugin {
               text: `❌ ${label} 请求失败`,
             }
           }
+          if (isAlreadySigned(res)) {
+            return {
+              status: "signed",
+              uid: uidText,
+              name,
+              msg: String(res?.data?.message || "今日已签到"),
+              text: `☑️ 已签 ${label}`,
+            }
+          }
           if (res.code === 0) {
             await recordSuccess(1)
             return {
@@ -1645,15 +1686,6 @@ export class enduid extends plugin {
               name,
               msg: "签到完成",
               text: `✅ ${label}`,
-            }
-          }
-          if (res.code === 10001) {
-            return {
-              status: "signed",
-              uid: uidText,
-              name,
-              msg: "今日已签到",
-              text: `☑️ 已签 ${label}`,
             }
           }
 
