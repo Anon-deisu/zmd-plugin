@@ -576,7 +576,7 @@ export class enduid extends plugin {
         items: [
           { name: "订阅公告", cmd: `${p}订阅公告`, desc: "" },
           { name: "取消订阅", cmd: `${p}取消订阅公告`, desc: "" },
-          { name: "清理缓存", cmd: `${p}清理公告缓存`, desc: "清理公告缓存文件", badge: "MASTER" },
+          { name: "清理缓存", cmd: `${p}清理公告缓存`, desc: "清理公告内存缓存（不影响订阅/已读）", badge: "MASTER" },
         ],
       },
       {
@@ -605,7 +605,7 @@ export class enduid extends plugin {
           { name: "签到", cmd: `${fz}签到`, desc: "" },
           { name: "自动签到", cmd: `${fz}开启自动签到 / ${fz}关闭自动签到`, desc: "" },
           { name: "全部签到", cmd: `${fz}全部签到`, desc: "执行全部签到任务", badge: "MASTER" },
-          { name: "抽卡记录", cmd: `${fz}更新抽卡记录 / ${fz}抽卡记录`, desc: "限定/常驻/中坚聚合" },
+          { name: "抽卡记录", cmd: `${fz}更新 / 全量 / 导入 / 导出 / 删除 / 查看抽卡记录`, desc: "限定/常驻/中坚聚合，支持 @用户" },
         ],
       },
       {
@@ -718,7 +718,7 @@ export class enduid extends plugin {
       `- ${p}角色列表`,
       `- ${p}武器列表`,
       `- ${p}卡池`,
-      `- ${p}<名称>图鉴`,
+      `- ${p}<名称>图鉴（也可查：介绍/技能/天赋/潜能/专武/武器）`,
       ``,
       `【签到】`,
       `- ${p}签到`,
@@ -729,7 +729,8 @@ export class enduid extends plugin {
       `- ${fz}签到`,
       `- ${fz}开启自动签到 / ${fz}关闭自动签到`,
       isMaster ? `- ${fz}全部签到（仅 master）` : "",
-      `- ${fz}更新抽卡记录 / ${fz}抽卡记录（限定/常驻/中坚聚合）`,
+      `- ${fz}更新抽卡记录 / ${fz}全量更新抽卡记录 / ${fz}抽卡记录`,
+      `- ${fz}导入抽卡记录 / ${fz}导出抽卡记录 / ${fz}删除抽卡记录`,
       ``,
       `【其他】`,
       `- ${p}状态`,
