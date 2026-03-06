@@ -264,10 +264,10 @@ export class fz extends plugin {
 
       try {
         const img = await renderImg(
-          "enduid/all_sign",
+          "fz/all_sign",
           {
             title: `${GAME_TITLE} 全部签到`,
-            subtitle: "森空岛账号批量签到结果",
+            subtitle: "罗德岛值班账号签到总览",
             time: formatNow(),
             success,
             signed,
@@ -278,7 +278,6 @@ export class fz extends plugin {
             truncated: remain > 0,
             shown: shown.length,
             remain,
-            theme: "fz",
             imgType: "png",
             copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
           },

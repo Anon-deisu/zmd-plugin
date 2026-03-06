@@ -2,8 +2,8 @@
 <!--
   enduid/all_sign
 
-  渲染入口：apps/enduid.js / apps/fz.js（#zmd全部签到 / #fz全部签到）
-  期望参数：title/subtitle/time/success/signed/fail/skip/total/items/truncated/shown/remain/theme
+  渲染入口：apps/enduid.js（#zmd全部签到）
+  期望参数：title/subtitle/time/success/signed/fail/skip/total/items/truncated/shown/remain
 -->
 
 {{block 'css'}}
@@ -11,72 +11,94 @@
 {{/block}}
 
 {{block 'main'}}
-<div class="report report-{{theme || 'zmd'}}">
-  <div class="hero">
-    <div class="hero-copy">
-      <div class="eyebrow">Batch Sign Report</div>
-      <div class="title">{{title}}</div>
-      <div class="subtitle">{{subtitle || '批量签到结果汇总'}}</div>
+<div class="terminal-shell">
+  <div class="terminal-topbar">
+    <div class="terminal-mark">
+      <span class="terminal-mark-label">Execution Terminal</span>
+      <span class="terminal-mark-id">ZF-SIGN-BATCH</span>
     </div>
-    <div class="hero-time">
-      <div class="time-label">生成时间</div>
-      <div class="time-value">{{time}}</div>
+    <div class="timestamp-box">
+      <div class="timestamp-label">RUN AT</div>
+      <div class="timestamp-value">{{time}}</div>
     </div>
   </div>
 
-  <div class="overview">
-    <div class="metric metric-total">
-      <div class="metric-label">总计</div>
-      <div class="metric-value">{{total}}</div>
+  <div class="terminal-hero">
+    <div class="hero-copy">
+      <div class="hero-title">{{title}}</div>
+      <div class="hero-subtitle">{{subtitle || '终末地账号批处理执行结果'}}</div>
     </div>
-    <div class="metric metric-success">
-      <div class="metric-label">成功</div>
-      <div class="metric-value">{{success}}</div>
+    <div class="hero-total-card">
+      <div class="hero-total-label">PROCESSED</div>
+      <div class="hero-total-value">{{total}}</div>
+      <div class="hero-total-note">current execution batch</div>
     </div>
-    <div class="metric metric-signed">
-      <div class="metric-label">已签</div>
-      <div class="metric-value">{{signed}}</div>
+  </div>
+
+  <div class="summary-grid">
+    <div class="summary-card summary-total">
+      <div class="summary-code">TTL</div>
+      <div class="summary-label">总计</div>
+      <div class="summary-value">{{total}}</div>
     </div>
-    <div class="metric metric-fail">
-      <div class="metric-label">失败</div>
-      <div class="metric-value">{{fail}}</div>
+    <div class="summary-card summary-success">
+      <div class="summary-code">SUC</div>
+      <div class="summary-label">成功</div>
+      <div class="summary-value">{{success}}</div>
     </div>
-    <div class="metric metric-skip">
-      <div class="metric-label">跳过</div>
-      <div class="metric-value">{{skip || 0}}</div>
+    <div class="summary-card summary-signed">
+      <div class="summary-code">SGN</div>
+      <div class="summary-label">已签</div>
+      <div class="summary-value">{{signed}}</div>
+    </div>
+    <div class="summary-card summary-fail">
+      <div class="summary-code">ERR</div>
+      <div class="summary-label">失败</div>
+      <div class="summary-value">{{fail}}</div>
+    </div>
+    <div class="summary-card summary-skip">
+      <div class="summary-code">SKP</div>
+      <div class="summary-label">跳过</div>
+      <div class="summary-value">{{skip || 0}}</div>
     </div>
   </div>
 
   {{if truncated}}
-  <div class="notice">
-    <span class="notice-tag">已截断</span>
+  <div class="notice-bar">
+    <span class="notice-tag">WARN</span>
     仅展示前 <strong>{{shown}}</strong> 条，剩余 <strong>{{remain}}</strong> 条未展示
   </div>
   {{/if}}
 
-  <div class="section-head">
-    <div class="section-title">执行明细</div>
-    <div class="section-subtitle">按执行顺序展示最近批次结果</div>
-  </div>
-
-  <div class="list">
-    {{each items it}}
-    <div class="item item-{{it.status}}">
-      <div class="item-index">{{$index + 1}}</div>
-      <div class="item-main">
-        <div class="item-top">
-          <div class="identity">
-            <div class="uid">UID:{{it.uid}}</div>
-            <div class="name">{{it.name}}</div>
-          </div>
-          <div class="status-tag status-{{it.status}}">
-            {{if it.status === 'success'}}成功{{else if it.status === 'signed'}}已签{{else if it.status === 'fail'}}失败{{else}}跳过{{/if}}
-          </div>
-        </div>
-        <div class="msg">{{it.msg}}</div>
-      </div>
+  <div class="detail-panel">
+    <div class="detail-panel-head">
+      <div class="detail-title">Execution Log</div>
+      <div class="detail-subtitle">按执行顺序输出本批次账号状态</div>
     </div>
-    {{/each}}
+
+    <div class="table-head">
+      <div class="col-index">#</div>
+      <div class="col-uid">UID</div>
+      <div class="col-name">账号</div>
+      <div class="col-status">状态</div>
+      <div class="col-msg">结果</div>
+    </div>
+
+    <div class="table-body">
+      {{each items it}}
+      <div class="table-row row-{{it.status}}">
+        <div class="col-index row-index">{{$index + 1}}</div>
+        <div class="col-uid row-uid">{{it.uid}}</div>
+        <div class="col-name row-name">{{it.name}}</div>
+        <div class="col-status row-status">
+          <span class="status-chip chip-{{it.status}}">
+            {{if it.status === 'success'}}成功{{else if it.status === 'signed'}}已签{{else if it.status === 'fail'}}失败{{else}}跳过{{/if}}
+          </span>
+        </div>
+        <div class="col-msg row-msg">{{it.msg}}</div>
+      </div>
+      {{/each}}
+    </div>
   </div>
 </div>
 {{/block}}

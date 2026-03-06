@@ -1,0 +1,347 @@
+/*
+  fz/all_sign
+
+  Used by: #fz全部签到
+  Goal: roster board with calm medical-operational tone.
+*/
+
+body {
+  width: 1080px;
+  background: #d8e6e4;
+  color: #17363a;
+  font-family: "FZB", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.container {
+  width: 1080px;
+  padding: 26px 26px 16px;
+}
+
+.duty-sheet {
+  position: relative;
+  overflow: hidden;
+  border-radius: 30px;
+  padding: 26px;
+  background: linear-gradient(180deg, rgba(240, 249, 247, 0.96), rgba(228, 240, 238, 0.94));
+  border: 1px solid rgba(26, 102, 112, 0.14);
+  box-shadow: 0 24px 56px rgba(19, 54, 58, 0.16);
+}
+
+.duty-sheet::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.12), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(8, 145, 178, 0.1), transparent 28%);
+  pointer-events: none;
+}
+
+.duty-sheet::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: linear-gradient(180deg, #0891b2, #22c55e);
+  opacity: 0.9;
+}
+
+.sheet-header,
+.summary-board,
+.sheet-notice,
+.roster-panel {
+  position: relative;
+  z-index: 1;
+}
+
+.sheet-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  gap: 18px;
+  align-items: start;
+}
+
+.sheet-copy {
+  min-width: 0;
+}
+
+.sheet-kicker {
+  color: #0b7d91;
+  font-size: 12px;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+}
+
+.sheet-title {
+  margin-top: 14px;
+  color: #103b40;
+  font-family: "NZBZ", "FZB", "PingFang SC", sans-serif;
+  font-size: 36px;
+  line-height: 1.08;
+}
+
+.sheet-subtitle {
+  margin-top: 8px;
+  color: rgba(16, 59, 64, 0.68);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.shift-stamp {
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(8, 145, 178, 0.16);
+}
+
+.stamp-label {
+  color: rgba(16, 59, 64, 0.58);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.stamp-time {
+  margin-top: 10px;
+  color: #103b40;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.summary-board {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.summary-card {
+  min-height: 118px;
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(16, 59, 64, 0.08);
+}
+
+.card-label {
+  color: rgba(16, 59, 64, 0.62);
+  font-size: 13px;
+}
+
+.card-value {
+  margin-top: 18px;
+  color: #103b40;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.card-note {
+  margin-top: 10px;
+  color: rgba(16, 59, 64, 0.52);
+  font-size: 13px;
+}
+
+.card-total {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(233, 246, 243, 0.9));
+}
+
+.summary-success {
+  border-top: 4px solid rgba(34, 197, 94, 0.82);
+}
+
+.summary-success .card-value {
+  color: #178753;
+}
+
+.summary-signed {
+  border-top: 4px solid rgba(8, 145, 178, 0.8);
+}
+
+.summary-signed .card-value {
+  color: #0f7e96;
+}
+
+.summary-fail {
+  border-top: 4px solid rgba(221, 89, 111, 0.8);
+}
+
+.summary-fail .card-value {
+  color: #c14b5f;
+}
+
+.summary-skip {
+  border-top: 4px solid rgba(125, 144, 148, 0.72);
+}
+
+.summary-skip .card-value {
+  color: #667d82;
+}
+
+.sheet-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px dashed rgba(8, 145, 178, 0.26);
+  color: #1d4d53;
+  font-size: 14px;
+}
+
+.sheet-notice strong {
+  color: #0f7e96;
+}
+
+.notice-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(8, 145, 178, 0.1);
+  color: #0f7e96;
+  font-size: 12px;
+  border: 1px solid rgba(8, 145, 178, 0.18);
+}
+
+.roster-panel {
+  margin-top: 18px;
+}
+
+.roster-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.roster-title {
+  color: #103b40;
+  font-size: 21px;
+}
+
+.roster-subtitle {
+  color: rgba(16, 59, 64, 0.56);
+  font-size: 13px;
+}
+
+.roster-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.roster-card {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  padding: 14px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(16, 59, 64, 0.08);
+}
+
+.roster-index {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background: rgba(8, 145, 178, 0.08);
+  color: rgba(16, 59, 64, 0.68);
+  font-size: 18px;
+}
+
+.roster-body {
+  min-width: 0;
+}
+
+.roster-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.roster-identity {
+  min-width: 0;
+}
+
+.roster-name {
+  color: #103b40;
+  font-size: 18px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roster-uid {
+  margin-top: 5px;
+  color: rgba(16, 59, 64, 0.56);
+  font-size: 13px;
+}
+
+.roster-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.status-success {
+  color: #178753;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.status-signed {
+  color: #0f7e96;
+  background: rgba(8, 145, 178, 0.12);
+}
+
+.status-fail {
+  color: #c14b5f;
+  background: rgba(221, 89, 111, 0.12);
+}
+
+.status-skip {
+  color: #667d82;
+  background: rgba(125, 144, 148, 0.14);
+}
+
+.roster-msg {
+  margin-top: 10px;
+  color: rgba(16, 59, 64, 0.82);
+  font-size: 14px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.roster-card-success {
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.08);
+}
+
+.roster-card-signed {
+  box-shadow: inset 0 0 0 1px rgba(8, 145, 178, 0.08);
+}
+
+.roster-card-fail {
+  box-shadow: inset 0 0 0 1px rgba(221, 89, 111, 0.08);
+}
+
+.roster-card-skip {
+  box-shadow: inset 0 0 0 1px rgba(125, 144, 148, 0.08);
+}
+
+.copyright {
+  color: rgba(255, 255, 255, 0.86);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  opacity: 1;
+}

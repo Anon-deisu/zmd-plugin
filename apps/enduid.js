@@ -1713,7 +1713,7 @@ export class enduid extends plugin {
           "enduid/all_sign",
           {
             title: `${GAME_TITLE} 全部签到`,
-            subtitle: "终末地账号批量签到结果",
+            subtitle: "终末地账号批处理执行回执",
             time: `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`,
             success,
             signed,
@@ -1724,7 +1724,6 @@ export class enduid extends plugin {
             truncated: remain > 0,
             shown: shown.length,
             remain,
-            theme: "zmd",
             imgType: "png",
             copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
           },
