@@ -14,6 +14,39 @@ function extractLeadingEmoji(message) {
   return { emoji: m[1] || "", text: (m[2] || "").trim() }
 }
 
+function extractConventionalCommit(message) {
+  const s = String(message || "").trim()
+  if (!s) return { emoji: "", text: "" }
+
+  const m = s.match(/^([a-z]+)(\([^)]+\))?(!)?:\s*(.+)$/i)
+  if (!m) return { emoji: "", text: "" }
+
+  const type = String(m[1] || "").toLowerCase()
+  const scope = String(m[2] || "")
+  const bang = String(m[3] || "")
+  const subject = String(m[4] || "").trim()
+  const emojiMap = {
+    feat: "✨",
+    fix: "🐛",
+    refactor: "♻️",
+    perf: "⚡",
+    docs: "📝",
+    style: "🎨",
+    test: "✅",
+    chore: "🔧",
+    ci: "🤖",
+    build: "📦",
+    revert: "⏪",
+  }
+  const emoji = emojiMap[type] || ""
+  if (!emoji || !subject) return { emoji: "", text: "" }
+
+  return {
+    emoji,
+    text: `${type}${scope}${bang}: ${subject}`,
+  }
+}
+
 export function getUpdateLogs({ cwd, maxItems = 18, maxGit = 100 } = {}) {
   const out = []
   try {
@@ -28,10 +61,12 @@ export function getUpdateLogs({ cwd, maxItems = 18, maxGit = 100 } = {}) {
       .map(s => s.trim())
       .filter(Boolean)
     for (const line of lines) {
-      const { emoji, text } = extractLeadingEmoji(line)
+      const emojiItem = extractLeadingEmoji(line)
+      const conventionalItem = emojiItem.emoji ? { emoji: "", text: "" } : extractConventionalCommit(line)
+      const { emoji, text } = emojiItem.emoji ? emojiItem : conventionalItem
       if (!emoji) continue
       let t = text.replaceAll("`", "")
-      if (t.includes(")")) t = `${t.split(")")[0]})`
+      if (t.length > 96) t = `${t.slice(0, 95)}…`
       out.push({ emoji, text: t })
       if (out.length >= maxItems) break
     }

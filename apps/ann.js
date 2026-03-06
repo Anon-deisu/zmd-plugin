@@ -150,8 +150,11 @@ export class ann extends plugin {
 
   async clearCache() {
     const e = this.e
-    await clearAnnMemoryCache()
-    await e.reply(`${GAME_TITLE} 已清理公告内存缓存`, true)
+    const cleared = await clearAnnMemoryCache()
+    await e.reply(
+      `${GAME_TITLE} 已清理公告内存缓存（列表 ${Number(cleared?.listCount) || 0} 条，详情 ${Number(cleared?.detailCount) || 0} 条；不影响订阅与已读记录）`,
+      true,
+    )
     return true
   }
 }

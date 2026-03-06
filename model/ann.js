@@ -308,8 +308,13 @@ export async function listSubscribedAnnGroups() {
 }
 
 export async function clearAnnMemoryCache() {
+  const summary = {
+    listCount: Array.isArray(memCache.list.data) ? memCache.list.data.length : 0,
+    detailCount: memCache.detail.size,
+  }
   memCache.list = { ts: 0, data: [] }
   memCache.detail.clear()
+  return summary
 }
 
 function annSeenKey(groupId) {
