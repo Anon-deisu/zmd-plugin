@@ -221,7 +221,33 @@ function getItemKey(item) {
   const poolId = String(item?.poolId || "")
   const gachaTs = String(item?.gachaTs ?? "")
   const pos = String(item?.pos ?? "")
+  if (!poolId && !gachaTs && !pos) return ""
   return `${poolId}|${gachaTs}|${pos}`
+}
+
+function getLatestCursor(items) {
+  if (!Array.isArray(items) || !items.length) return { gachaTs: 0, pos: -1 }
+
+  let latest = { gachaTs: 0, pos: -1 }
+  for (const item of items) {
+    const gachaTs = safeInt(item?.gachaTs, 0)
+    const pos = safeInt(item?.pos, -1)
+    if (gachaTs > latest.gachaTs || (gachaTs === latest.gachaTs && pos > latest.pos)) {
+      latest = { gachaTs, pos }
+    }
+  }
+  return latest
+}
+
+function isRecordNewerThanCursor(record, cursor) {
+  const currentTs = safeInt(record?.gachaTs, 0)
+  const currentPos = safeInt(record?.pos, -1)
+  const latestTs = safeInt(cursor?.gachaTs, 0)
+  const latestPos = safeInt(cursor?.pos, -1)
+
+  if (!latestTs) return true
+  if (currentTs !== latestTs) return currentTs > latestTs
+  return currentPos > latestPos
 }
 
 async function getHypergryphHeadersForUser(userId, { json = true } = {}) {
@@ -396,7 +422,7 @@ function normalizeRecord(raw) {
   }
 }
 
-async function getAllGachaRecords(uid, category, { accountToken, roleToken, akCookie, maxGachaTs = 0 } = {}) {
+async function getAllGachaRecords(uid, category, { accountToken, roleToken, akCookie, latestCursor = null } = {}) {
   let all = []
   let page = await getGachaHistory(uid, category, { accountToken, roleToken, akCookie })
 
@@ -408,8 +434,7 @@ async function getAllGachaRecords(uid, category, { accountToken, roleToken, akCo
 
     const newRecords = []
     for (const rec of list) {
-      const ts = safeInt(rec?.gachaTs)
-      if (!maxGachaTs || ts > maxGachaTs) newRecords.push(rec)
+      if (!latestCursor || isRecordNewerThanCursor(rec, latestCursor)) newRecords.push(rec)
       else return all.concat(newRecords)
     }
 
@@ -532,11 +557,6 @@ async function saveExport(akUid, exportData) {
   return fp
 }
 
-function maxGachaTs(items) {
-  if (!Array.isArray(items) || !items.length) return 0
-  return Math.max(...items.map(i => safeInt(i?.gachaTs, 0)))
-}
-
 export async function updateFzGachaLogsForUser(userId, { full = false } = {}) {
   const acc = await getFzAccountForUser(userId)
   if (!acc.ok) return { ok: false, message: acc.message }
@@ -554,7 +574,7 @@ export async function updateFzGachaLogsForUser(userId, { full = false } = {}) {
     const existing = await loadExport(akUid)
     const existingList = Array.isArray(existing?.list) ? existing.list : []
     const oldCount = existingList.length
-    const maxTs = full ? 0 : maxGachaTs(existingList)
+    const latestCursor = full ? null : getLatestCursor(existingList)
 
     const grantToken = await getGrantToken(hgToken, { deviceToken: acc.deviceToken, userId })
     const roleToken = await getRoleTokenByUid(akUid, grantToken, { userId })
@@ -572,7 +592,7 @@ export async function updateFzGachaLogsForUser(userId, { full = false } = {}) {
         accountToken: hgToken,
         roleToken,
         akCookie,
-        maxGachaTs: maxTs,
+        latestCursor,
       })
       fetched.push(...records)
     }

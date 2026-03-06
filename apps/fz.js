@@ -154,6 +154,11 @@ export class fz extends plugin {
 
   async autoSignOn() {
     const e = this.e
+    const acc = await getFzAccountForUser(e.user_id)
+    if (!acc.ok) {
+      await e.reply(acc.message, true)
+      return true
+    }
     try {
       await setFzAutoSign(e.user_id, true)
     } catch (err) {
