@@ -71,6 +71,18 @@ function splitList(text) {
   return parts
 }
 
+function escapeRegExp(text) {
+  return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function cleanTextBlock(text) {
+  return String(text || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+    .join("\n")
+}
+
 function parseAttrs(tag) {
   const attrs = {}
   // 只解析双引号/单引号包裹的属性值，够用且更稳。
@@ -157,6 +169,65 @@ function parseBasicInfoFromFirstTable(html) {
   }
 
   return info
+}
+
+function parseTableRows(tableHtml) {
+  const rows = []
+  const trRe = /<tr([^>]*)>([\s\S]*?)<\/tr>/gi
+  let tr
+  while ((tr = trRe.exec(String(tableHtml || "")))) {
+    const trAttrs = String(tr[1] || "")
+    if (/display\s*:\s*none/i.test(trAttrs)) continue
+
+    const rowHtml = tr[2]
+    const cellRe = /<(th|td)[^>]*>([\s\S]*?)<\/\1>/gi
+    const cells = []
+    let cell
+    while ((cell = cellRe.exec(rowHtml))) {
+      const text = cleanTextBlock(stripTags(cell[2]))
+      cells.push({ tag: cell[1], html: cell[2], text })
+    }
+    if (cells.some(cell => cell.text)) rows.push(cells)
+  }
+  return rows
+}
+
+function findHeadingIndex(html, heading) {
+  const re = new RegExp(`<th[^>]*>\\s*${escapeRegExp(heading)}\\s*`, "i")
+  return String(html || "").search(re)
+}
+
+function extractWikitableByHeading(html, heading) {
+  const tableRe = /(<table[^>]*class="[^"]*wikitable[^"]*"[^>]*>[\s\S]*?<\/table>)/gi
+  let m
+  while ((m = tableRe.exec(String(html || "")))) {
+    const tableHtml = m[1]
+    const headMatch = tableHtml.match(/<th[^>]*>([\s\S]*?)<\/th>/i)
+    const head = cleanTextBlock(stripTags(headMatch?.[1] || ""))
+    if (head === heading) return tableHtml
+  }
+  return ""
+}
+
+function extractSectionSlice(html, heading, nextHeadings = []) {
+  const source = String(html || "")
+  const start = findHeadingIndex(source, heading)
+  if (start < 0) return ""
+
+  let end = source.length
+  for (const next of nextHeadings) {
+    const idx = findHeadingIndex(source.slice(start + 1), next)
+    if (idx >= 0) end = Math.min(end, start + 1 + idx)
+  }
+  return source.slice(start, end)
+}
+
+function takeLines(text, maxLines = 4) {
+  return String(text || "")
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(0, maxLines)
 }
 
 function parseCharRarity(html) {
@@ -363,6 +434,107 @@ export function parseCharWiki(html, charName) {
 
   const basic = parseBasicInfoFromFirstTable(source)
   const rarity = parseCharRarity(source)
+  const archiveTable = extractWikitableByHeading(source, "档案")
+  const archiveRows = parseTableRows(archiveTable)
+  let archive_base = []
+  let archive_brief = []
+  for (let i = 0; i < archiveRows.length - 1; i++) {
+    const cur = archiveRows[i]
+    if (cur.length < 2) continue
+    if (cur[0].text === "基础档案" && cur[1].text === "人事简述") {
+      const next = archiveRows[i + 1]
+      if (Array.isArray(next) && next.length >= 2) {
+        archive_base = takeLines(next[0].text, 6)
+        archive_brief = takeLines(next[1].text, 4)
+      }
+      break
+    }
+  }
+
+  const talentTable = extractWikitableByHeading(source, "天赋")
+  const talentRows = parseTableRows(talentTable)
+  const talents = []
+  let currentTalent = null
+  for (const row of talentRows.slice(1)) {
+    if (row.length < 2) continue
+    let name = ""
+    let stage = ""
+    let description = ""
+
+    if (row.length >= 3) {
+      name = row[0].text
+      stage = row[1].text
+      description = row.slice(2).map(cell => cell.text).join(" ").trim()
+      currentTalent = name ? { name, effects: [] } : currentTalent
+      if (currentTalent && name) talents.push(currentTalent)
+    } else {
+      stage = row[0].text
+      description = row.slice(1).map(cell => cell.text).join(" ").trim()
+    }
+
+    if (!currentTalent || (!stage && !description)) continue
+    currentTalent.effects.push({ stage, description })
+  }
+
+  const skillSlice = extractSectionSlice(source, "技能", ["潜能", "信物", "档案"])
+  const skillTitleBlockMatch = skillSlice.match(
+    /<div[^>]*class="[^"]*d-tab-titles[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<div[^>]*class="[^"]*d-tab-contents[^"]*"/i,
+  )
+  const skillTitleBlock = skillTitleBlockMatch?.[1] || ""
+  const skillTitleSet = new Set()
+  const skillTitles = []
+  const skillTitleRe = /<img[^>]*alt="([^"]+?)\.png"/gi
+  let skillTitleMatch
+  while ((skillTitleMatch = skillTitleRe.exec(skillTitleBlock))) {
+    const title = String(skillTitleMatch[1] || "").trim()
+    if (!title || skillTitleSet.has(title)) continue
+    skillTitleSet.add(title)
+    skillTitles.push(title)
+  }
+
+  const skillSummaryKeySet = new Set(["普通攻击", "下落攻击", "处决攻击", "战技", "连携技", "终结技", "源石技艺", "闪避", "特性"])
+  const skillBlocks = skillSlice.split(/<div class="tab-content(?:\s+[^"]*)?">/i).slice(1)
+  const skills = skillBlocks.map((block, index) => {
+    const summary = []
+    const skillTableRe = /<table[^>]*class="[^"]*wikitable[^"]*"[^>]*>([\s\S]*?)<\/table>/gi
+    let skillTableMatch
+    while ((skillTableMatch = skillTableRe.exec(block))) {
+      const rows = parseTableRows(skillTableMatch[1])
+      if (!rows.length) continue
+      const firstKey = rows[0]?.[0]?.text || ""
+
+      if (skillSummaryKeySet.has(firstKey)) {
+        for (const row of rows) {
+          if (row.length < 2) continue
+          const label = row[0].text
+          const description = row.slice(1).map(cell => cell.text).join(" ").trim()
+          if (!label || !description) continue
+          summary.push({ label, description })
+          if (summary.length >= 4) break
+        }
+      } else if (!summary.length) {
+        const description = rows[0]?.[0]?.text || ""
+        if (description) summary.push({ label: "技能效果", description })
+      }
+
+      if (summary.length >= 4) break
+    }
+
+    return {
+      name: skillTitles[index] || `技能模块${index + 1}`,
+      summary,
+    }
+  }).filter(item => item.name || item.summary.length)
+
+  const potentialTable = extractWikitableByHeading(source, "潜能")
+  const potentialRows = parseTableRows(potentialTable)
+  const potentials = potentialRows.slice(1)
+    .map(row => ({
+      level: row[0]?.text || "",
+      title: row[1]?.text || "",
+      description: row.slice(2).map(cell => cell.text).join(" ").trim(),
+    }))
+    .filter(item => item.level || item.title || item.description)
 
   return {
     name: String(charName || ""),
@@ -376,6 +548,11 @@ export function parseCharWiki(html, charName) {
     hobbies: splitList(basic["爱好"] || ""),
     operator_preference: basic["干员偏好"] || "",
     release_date: basic["实装日期"] || "",
+    archive_base,
+    archive_brief,
+    talents,
+    skills,
+    potentials,
     fetch_time: 0,
   }
 }

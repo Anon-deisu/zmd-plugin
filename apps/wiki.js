@@ -49,6 +49,106 @@ function wikiUrl(name) {
   return `https://wiki.biligame.com/zmd/${encodeURIComponent(n)}`
 }
 
+function shorten(text, maxLen = 120) {
+  const s = String(text || "").replace(/\s+/g, " ").trim()
+  if (!s) return ""
+  return s.length > maxLen ? `${s.slice(0, Math.max(1, maxLen - 1))}…` : s
+}
+
+function buildCharSummaryReply(charWiki) {
+  return [
+    `${GAME_TITLE} 角色图鉴：${charWiki.name}（${formatRarity(charWiki.rarity)}）`,
+    charWiki.profession ? `职业：${charWiki.profession}` : "",
+    charWiki.attribute ? `属性：${charWiki.attribute}` : "",
+    Array.isArray(charWiki.tags) && charWiki.tags.length ? `TAG：${joinList(charWiki.tags, { maxLen: 800 })}` : "",
+    charWiki.faction ? `阵营：${charWiki.faction}` : "",
+    charWiki.race ? `种族：${charWiki.race}` : "",
+    Array.isArray(charWiki.specialties) && charWiki.specialties.length
+      ? `专长：${joinList(charWiki.specialties, { maxLen: 800 })}`
+      : "",
+    Array.isArray(charWiki.hobbies) && charWiki.hobbies.length ? `爱好：${joinList(charWiki.hobbies, { maxLen: 800 })}` : "",
+    charWiki.operator_preference ? `干员偏好：${charWiki.operator_preference}` : "",
+    charWiki.release_date ? `实装：${charWiki.release_date}` : "",
+    `Wiki：${wikiUrl(charWiki.name)}`,
+    `更新时间：${formatTime(charWiki.fetch_time)}`,
+  ].filter(Boolean)
+}
+
+function buildCharIntroReply(charWiki) {
+  const base = Array.isArray(charWiki.archive_base) ? charWiki.archive_base.map(line => shorten(line, 100)) : []
+  const brief = Array.isArray(charWiki.archive_brief) ? charWiki.archive_brief.map(line => shorten(line, 100)) : []
+  const lines = [
+    `${GAME_TITLE} 角色介绍：${charWiki.name}（${formatRarity(charWiki.rarity)}）`,
+    [charWiki.profession, charWiki.attribute].filter(Boolean).join(" / "),
+    base.length ? `基础档案：${base.join(" ")}` : "",
+    brief.length ? `人事简述：${brief.join(" ")}` : "",
+    `Wiki：${wikiUrl(charWiki.name)}`,
+    `更新时间：${formatTime(charWiki.fetch_time)}`,
+  ].filter(Boolean)
+  return lines.length > 4 ? lines : buildCharSummaryReply(charWiki)
+}
+
+function buildCharTalentReply(charWiki) {
+  const talents = Array.isArray(charWiki.talents) ? charWiki.talents.filter(item => item?.name) : []
+  if (!talents.length) return []
+
+  const lines = [`${GAME_TITLE} 角色天赋：${charWiki.name}`]
+  for (const talent of talents.slice(0, 4)) {
+    lines.push(`【${talent.name}】`)
+    const effects = Array.isArray(talent.effects) ? talent.effects : []
+    for (const effect of effects.slice(0, 3)) {
+      const stage = shorten(effect?.stage, 20) || "效果"
+      const desc = shorten(effect?.description, 150)
+      if (desc) lines.push(`${stage}：${desc}`)
+    }
+  }
+  lines.push(`Wiki：${wikiUrl(charWiki.name)}`)
+  lines.push(`更新时间：${formatTime(charWiki.fetch_time)}`)
+  return lines
+}
+
+function buildCharSkillReply(charWiki) {
+  const skills = Array.isArray(charWiki.skills) ? charWiki.skills.filter(item => item?.name) : []
+  if (!skills.length) return []
+
+  const lines = [`${GAME_TITLE} 角色技能：${charWiki.name}`]
+  for (const skill of skills.slice(0, 6)) {
+    lines.push(`【${skill.name}】`)
+    const summary = Array.isArray(skill.summary) ? skill.summary : []
+    for (const row of summary.slice(0, 4)) {
+      const label = shorten(row?.label, 20)
+      const desc = shorten(row?.description, 140)
+      if (label && desc) lines.push(`${label}：${desc}`)
+    }
+  }
+  lines.push(`Wiki：${wikiUrl(charWiki.name)}`)
+  lines.push(`更新时间：${formatTime(charWiki.fetch_time)}`)
+  return lines
+}
+
+function buildCharPotentialReply(charWiki) {
+  const potentials = Array.isArray(charWiki.potentials) ? charWiki.potentials.filter(item => item?.level || item?.title) : []
+  if (!potentials.length) return []
+
+  const lines = [`${GAME_TITLE} 角色潜能：${charWiki.name}`]
+  for (const item of potentials.slice(0, 5)) {
+    const title = item.title ? ` ${item.title}` : ""
+    const desc = shorten(item.description, 150)
+    lines.push(`${item.level || "潜能"}${title}${desc ? `：${desc}` : ""}`)
+  }
+  lines.push(`Wiki：${wikiUrl(charWiki.name)}`)
+  lines.push(`更新时间：${formatTime(charWiki.fetch_time)}`)
+  return lines
+}
+
+function buildCharReplyByKeyword(charWiki, keyword) {
+  if (keyword === "介绍") return buildCharIntroReply(charWiki)
+  if (keyword === "天赋") return buildCharTalentReply(charWiki)
+  if (keyword === "技能") return buildCharSkillReply(charWiki)
+  if (keyword === "潜能") return buildCharPotentialReply(charWiki)
+  return buildCharSummaryReply(charWiki)
+}
+
 async function resolveCharName(raw) {
   const s = String(raw || "").trim()
   if (!s) return ""
@@ -202,26 +302,10 @@ export class wiki extends plugin {
 
     const realName = await resolveCharName(rawName)
 
-    const charWiki = await getCharWiki(realName)
+    const charWiki = await getCharWiki(realName, { ensureSections: ["介绍", "技能", "天赋", "潜能"].includes(keyword) })
     if (charWiki) {
-      await e.reply(
-        [
-          `${GAME_TITLE} 角色图鉴：${charWiki.name}（${formatRarity(charWiki.rarity)}）`,
-          charWiki.profession ? `职业：${charWiki.profession}` : "",
-          charWiki.attribute ? `属性：${charWiki.attribute}` : "",
-          Array.isArray(charWiki.tags) && charWiki.tags.length ? `TAG：${joinList(charWiki.tags, { maxLen: 800 })}` : "",
-          charWiki.faction ? `阵营：${charWiki.faction}` : "",
-          charWiki.race ? `种族：${charWiki.race}` : "",
-          Array.isArray(charWiki.specialties) && charWiki.specialties.length
-            ? `专长：${joinList(charWiki.specialties, { maxLen: 800 })}`
-            : "",
-          Array.isArray(charWiki.hobbies) && charWiki.hobbies.length ? `爱好：${joinList(charWiki.hobbies, { maxLen: 800 })}` : "",
-          charWiki.release_date ? `实装：${charWiki.release_date}` : "",
-          `Wiki：${wikiUrl(charWiki.name)}`,
-          `更新时间：${formatTime(charWiki.fetch_time)}`,
-        ].filter(Boolean).join("\n"),
-        true,
-      )
+      const lines = buildCharReplyByKeyword(charWiki, keyword)
+      await e.reply((lines.length ? lines : buildCharSummaryReply(charWiki)).join("\n"), true)
       return true
     }
 

@@ -166,7 +166,12 @@ function findInList(data, name, kind) {
   return false
 }
 
-export async function getCharWiki(name, { forceRefresh = false } = {}) {
+function hasCharSectionData(data) {
+  if (!data || typeof data !== "object") return false
+  return Array.isArray(data.talents) && Array.isArray(data.skills) && Array.isArray(data.potentials)
+}
+
+export async function getCharWiki(name, { forceRefresh = false, ensureSections = false } = {}) {
   const list = await ensureListData()
   if (list && !findInList(list, name, "characters")) return null
 
@@ -174,12 +179,16 @@ export async function getCharWiki(name, { forceRefresh = false } = {}) {
   if (!safeName) return null
   const cachePath = path.join(CHAR_DIR, `${safeName}.json`)
   const legacyCachePath = path.join(LEGACY_CHAR_DIR, `${safeName}.json`)
+  let fallbackData = null
 
   if (!forceRefresh && !isDetailExpired(cachePath)) {
     try {
       const raw = await fs.readFile(cachePath, "utf8")
       const data = safeJsonParse(raw, null)
-      return data && typeof data === "object" ? data : null
+      if (data && typeof data === "object") {
+        fallbackData = data
+        if (!ensureSections || hasCharSectionData(data)) return data
+      }
     } catch {}
   }
 
@@ -190,16 +199,17 @@ export async function getCharWiki(name, { forceRefresh = false } = {}) {
       if (data && typeof data === "object") {
         // Best-effort: migrate legacy cache.
         saveJson(cachePath, data).catch(() => {})
-        return data
+        fallbackData = fallbackData || data
+        if (!ensureSections || hasCharSectionData(data)) return data
       }
     } catch {}
   }
 
   const html = await fetchPage(`${WIKI_BASE_URL}${encodeURIComponent(name)}`)
-  if (!html) return null
+  if (!html) return fallbackData
 
   const wiki = parseCharWiki(html, name)
-  if (!wiki) return null
+  if (!wiki) return fallbackData
 
   wiki.fetch_time = Math.floor(Date.now() / 1000)
   await saveJson(cachePath, wiki)
