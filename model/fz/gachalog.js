@@ -557,6 +557,20 @@ async function saveExport(akUid, exportData) {
   return fp
 }
 
+function normalizeImportPayload(raw) {
+  const parsed = typeof raw === "string" ? safeJsonParse(raw, null) : raw
+  if (!parsed) return { ok: false, message: `${GAME_TITLE} 导入失败：JSON 格式无效` }
+
+  const info = parsed?.info && typeof parsed.info === "object" ? parsed.info : {}
+  const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.list) ? parsed.list : []
+  if (!Array.isArray(list) || !list.length) return { ok: false, message: `${GAME_TITLE} 导入失败：记录列表为空` }
+
+  const normalized = list.map(normalizeRecord).filter(Boolean)
+  if (!normalized.length) return { ok: false, message: `${GAME_TITLE} 导入失败：未识别到有效抽卡记录` }
+
+  return { ok: true, info, list: normalized }
+}
+
 export async function updateFzGachaLogsForUser(userId, { full = false } = {}) {
   const acc = await getFzAccountForUser(userId)
   if (!acc.ok) return { ok: false, message: acc.message }
@@ -633,6 +647,77 @@ export async function updateFzGachaLogsForUser(userId, { full = false } = {}) {
     return { ok: false, message: `${GAME_TITLE} 刷新抽卡记录失败：${err?.message || err}` }
   } finally {
     running.delete(akUid)
+  }
+}
+
+export async function exportFzGachaLogsForUser(userId) {
+  const acc = await getFzAccountForUser(userId)
+  if (!acc.ok) return { ok: false, message: acc.message }
+
+  const akUid = String(acc.akUid)
+  const exportData = await loadExport(akUid)
+  if (!exportData) return { ok: false, message: `${GAME_TITLE} 未找到抽卡记录，请先使用：#fz更新抽卡记录` }
+
+  return {
+    ok: true,
+    akUid,
+    filePath: exportFilePath(akUid),
+    fileName: `arknights-gachalog-${akUid}.json`,
+    exportData,
+  }
+}
+
+export async function deleteFzGachaLogsForUser(userId) {
+  const acc = await getFzAccountForUser(userId)
+  if (!acc.ok) return { ok: false, message: acc.message }
+
+  const akUid = String(acc.akUid)
+  const filePath = exportFilePath(akUid)
+  if (!fsSync.existsSync(filePath)) return { ok: false, message: `${GAME_TITLE} 未找到抽卡记录，无需删除` }
+
+  await fs.mkdir(DATA_DIR, { recursive: true })
+  const backupPath = path.join(DATA_DIR, `${akUid}.${Date.now()}.bak.json`)
+  await fs.rename(filePath, backupPath)
+  return { ok: true, akUid, backupPath }
+}
+
+export async function importFzGachaLogsFromJsonForUser(userId, raw, { replace = false } = {}) {
+  const acc = await getFzAccountForUser(userId)
+  if (!acc.ok) return { ok: false, message: acc.message }
+
+  const akUid = String(acc.akUid)
+  const parsed = normalizeImportPayload(raw)
+  if (!parsed.ok) return parsed
+
+  const importUid = String(parsed.info?.uid || parsed.info?.akUid || "").trim()
+  if (importUid && importUid !== akUid) {
+    return { ok: false, message: `${GAME_TITLE} 导入失败：记录 UID 为 ${importUid}，与当前账号 ${akUid} 不一致` }
+  }
+
+  const existing = await loadExport(akUid)
+  const existingList = Array.isArray(existing?.list) ? existing.list : []
+  const { merged, newCount } = mergeRecords(existingList, parsed.list, { full: replace })
+
+  const exportData = {
+    info: {
+      uid: akUid,
+      lang: "zh-cn",
+      timezone: 8,
+      exportTimestamp: Math.floor(Date.now() / 1000),
+      version: "v1.0",
+    },
+    list: merged,
+  }
+
+  const filePath = await saveExport(akUid, exportData)
+  return {
+    ok: true,
+    akUid,
+    filePath,
+    oldCount: existingList.length,
+    total: merged.length,
+    newCount,
+    exportTimestamp: exportData.info.exportTimestamp,
   }
 }
 

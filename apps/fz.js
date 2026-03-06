@@ -10,6 +10,8 @@
 
 import plugin from "../../../lib/plugins/plugin.js"
 
+import fetch from "node-fetch"
+
 import cfg from "../model/config.js"
 import { patchTempSessionReply } from "../model/reply.js"
 import { render as renderImg } from "../model/render.js"
@@ -17,7 +19,13 @@ import { getQueryUserId } from "../model/mention.js"
 import { listBoundUsers } from "../model/store.js"
 import { attendanceArknights } from "../model/skland/client.js"
 import { getFzAccountForUser } from "../model/fz/account.js"
-import { getFzGachaLogViewForUser, updateFzGachaLogsForUser } from "../model/fz/gachalog.js"
+import {
+  deleteFzGachaLogsForUser,
+  exportFzGachaLogsForUser,
+  getFzGachaLogViewForUser,
+  importFzGachaLogsFromJsonForUser,
+  updateFzGachaLogsForUser,
+} from "../model/fz/gachalog.js"
 import { listFzAutoSignUsers, setFzAutoSign } from "../model/fz/store.js"
 
 const GAME_TITLE = "[明日方舟]"
@@ -53,6 +61,55 @@ function formatNow() {
   const mi = String(t.getMinutes()).padStart(2, "0")
   const ss = String(t.getSeconds()).padStart(2, "0")
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+}
+
+async function getSegment() {
+  if (global.segment) return global.segment
+  try {
+    const mod = await import("icqq")
+    return mod.segment
+  } catch {}
+  try {
+    const mod = await import("oicq")
+    return mod.segment
+  } catch {}
+  return null
+}
+
+function normalizeText(text) {
+  return String(text || "").trim()
+}
+
+function extractUrlLike(text) {
+  const s = normalizeText(text)
+  if (!s) return ""
+  const m = s.match(/https?:\/\/\S+/i)
+  return m?.[0] ? m[0] : ""
+}
+
+function buildRefreshDoneLines({ res, isOther, targetId, full = false }) {
+  if (!full) {
+    return [
+      `${GAME_TITLE} 抽卡记录已更新！`,
+      isOther ? `目标：${targetId}` : "",
+      `UID：${res.akUid}`,
+      res.channelName ? `服务器：${res.channelName}` : "",
+      `新增记录：${res.newCount} 条`,
+      `当前总记录：${res.total} 条`,
+      `查看：${PREFIX}抽卡记录`,
+    ]
+  }
+
+  return [
+    `${GAME_TITLE} 抽卡记录全量重拉完成！`,
+    isOther ? `目标：${targetId}` : "",
+    `UID：${res.akUid}`,
+    res.channelName ? `服务器：${res.channelName}` : "",
+    `覆盖前：${res.oldCount} 条`,
+    `覆盖后：${res.total} 条`,
+    `新增去重后记录：${res.newCount} 条`,
+    `提示：该指令会重建本地记录，用于修复分类异常或历史缺失`,
+  ]
 }
 
 async function runFzSignOne(userId) {
@@ -193,10 +250,15 @@ export class fz extends plugin {
       event: "message",
       priority: 5000,
       rule: [
+        { reg: "^#?fz抽卡帮助$", fnc: "help" },
         { reg: "^#?fz签到$", fnc: "sign" },
         { reg: "^#?fz(?:全部签到|全体签到|一键签到)$", fnc: "allSign", permission: "master" },
         { reg: "^#?fz(?:开启自动签到|自动签到开启)$", fnc: "autoSignOn" },
         { reg: "^#?fz(?:关闭自动签到|自动签到关闭)$", fnc: "autoSignOff" },
+        { reg: "^#?fz导入抽卡记录(?:\\s*.*)?$", fnc: "importLogs" },
+        { reg: "^#?fz导出抽卡记录$", fnc: "exportLogs" },
+        { reg: "^#?fz删除抽卡记录$", fnc: "deleteLogs" },
+        { reg: "^#?fz(?:全量更新抽卡记录|重刷抽卡记录|重置抽卡记录|重拉抽卡记录)(?:\\s*.*)?$", fnc: "refreshAll" },
         { reg: "^#?fz更新抽卡记录(?:\\s*.*)?$", fnc: "refresh" },
         { reg: "^#?fz抽卡记录(?:\\s*.*)?$", fnc: "show" },
       ],
@@ -206,6 +268,21 @@ export class fz extends plugin {
         fnc: runFzAutoSignAll,
       },
     })
+  }
+
+  async help() {
+    const e = this.e
+    const lines = [
+      `${GAME_TITLE} 抽卡帮助`,
+      `更新：${PREFIX}更新抽卡记录<@用户>`,
+      `全量：${PREFIX}全量更新抽卡记录<@用户>`,
+      `查看：${PREFIX}抽卡记录<@用户>`,
+      `导入：${PREFIX}导入抽卡记录<JSON文件>`,
+      `导出：${PREFIX}导出抽卡记录`,
+      `删除：${PREFIX}删除抽卡记录`,
+    ]
+    await e.reply(lines.join("\n"), true)
+    return true
   }
 
   async sign() {
@@ -343,19 +420,25 @@ export class fz extends plugin {
       return true
     }
 
-    const lines = [
-      `${GAME_TITLE} 抽卡记录已更新！`,
-      isOther ? `目标：${targetUserId}` : "",
-      `UID：${res.akUid}`,
-      res.channelName ? `服务器：${res.channelName}` : "",
-      `新增记录：${res.newCount} 条`,
-      `当前总记录：${res.total} 条`,
-      `查看：${PREFIX}抽卡记录`,
-    ]
-      .filter(Boolean)
-      .join("\n")
+    await e.reply(buildRefreshDoneLines({ res, isOther, targetId: targetUserId, full: false }).filter(Boolean).join("\n"), true)
+    return true
+  }
 
-    await e.reply(lines, true)
+  async refreshAll() {
+    const e = this.e
+
+    const targetUserId = getQueryUserId(e)
+    const isOther = String(targetUserId) !== String(e.user_id)
+
+    await e.reply(`${GAME_TITLE} 正在全量重拉抽卡记录，请稍候...${isOther ? `\n目标：${targetUserId}` : ""}`, true)
+
+    const res = await updateFzGachaLogsForUser(targetUserId, { full: true })
+    if (!res.ok) {
+      await e.reply(res.message, true)
+      return true
+    }
+
+    await e.reply(buildRefreshDoneLines({ res, isOther, targetId: targetUserId, full: true }).filter(Boolean).join("\n"), true)
     return true
   }
 
@@ -390,5 +473,130 @@ export class fz extends plugin {
 
     await e.reply(res.text, true)
     return true
+  }
+
+  async exportLogs() {
+    const e = this.e
+    const res = await exportFzGachaLogsForUser(e.user_id)
+    if (!res.ok) {
+      await e.reply(res.message, true)
+      return true
+    }
+
+    const seg = await getSegment()
+    if (seg?.file) {
+      await e.reply(seg.file(res.filePath, res.fileName), true)
+      return true
+    }
+
+    await e.reply(`${GAME_TITLE} 抽卡记录文件：${res.filePath}`, true)
+    return true
+  }
+
+  async deleteLogs() {
+    const e = this.e
+    const res = await deleteFzGachaLogsForUser(e.user_id)
+    if (!res.ok) {
+      await e.reply(res.message, true)
+      return true
+    }
+
+    await e.reply(`${GAME_TITLE} 已删除抽卡记录（已备份）：${res.backupPath}`, true)
+    return true
+  }
+
+  async importLogs() {
+    const e = this.e
+
+    const fileMsg = Array.isArray(e.message) ? e.message.find(m => m?.type === "file") : null
+    if (fileMsg) {
+      try {
+        const url = String(fileMsg.url || fileMsg.file || "").trim()
+        if (!url) throw new Error("missing_file_url")
+
+        let raw = ""
+        const filePath = url.startsWith("file://") ? url.slice("file://".length) : url
+        if (/^[a-zA-Z]:\\/.test(filePath) || filePath.startsWith("/") || filePath.startsWith("\\")) {
+          const fs = await import("node:fs/promises")
+          raw = await fs.readFile(filePath, "utf8")
+        } else {
+          const resp = await fetch(url)
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          raw = await resp.text()
+        }
+
+        const res = await importFzGachaLogsFromJsonForUser(e.user_id, raw)
+        if (!res.ok) {
+          await e.reply(res.message, true)
+          return true
+        }
+
+        await e.reply(
+          [
+            `${GAME_TITLE} 导入完成！`,
+            `UID：${res.akUid}`,
+            `新增记录：${res.newCount} 条`,
+            `当前总记录：${res.total} 条`,
+          ].join("\n"),
+          true,
+        )
+        return true
+      } catch (err) {
+        await e.reply(`${GAME_TITLE} 导入失败：${err?.message || err}`, true)
+        return true
+      }
+    }
+
+    const msg = String(e.msg || "")
+    const content = msg.replace(/^#?fz\s*导入抽卡记录/i, "").trim()
+    if (content.startsWith("{") || content.startsWith("[")) {
+      const res = await importFzGachaLogsFromJsonForUser(e.user_id, content)
+      if (!res.ok) {
+        await e.reply(res.message, true)
+        return true
+      }
+
+      await e.reply(
+        [
+          `${GAME_TITLE} 导入完成！`,
+          `UID：${res.akUid}`,
+          `新增记录：${res.newCount} 条`,
+          `当前总记录：${res.total} 条`,
+        ].join("\n"),
+        true,
+      )
+      return true
+    }
+
+    const input = content || extractUrlLike(msg)
+    if (!input) {
+      await e.reply(`${GAME_TITLE} 请直接发送 JSON 文件，或在命令后粘贴 JSON 内容 / 文件链接`, true)
+      return true
+    }
+
+    try {
+      const resp = await fetch(input)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const raw = await resp.text()
+      const res = await importFzGachaLogsFromJsonForUser(e.user_id, raw)
+      if (!res.ok) {
+        await e.reply(res.message, true)
+        return true
+      }
+
+      await e.reply(
+        [
+          `${GAME_TITLE} 导入完成！`,
+          `UID：${res.akUid}`,
+          `新增记录：${res.newCount} 条`,
+          `当前总记录：${res.total} 条`,
+        ].join("\n"),
+        true,
+      )
+      return true
+    } catch (err) {
+      await e.reply(`${GAME_TITLE} 导入失败：${err?.message || err}`, true)
+      return true
+    }
   }
 }
