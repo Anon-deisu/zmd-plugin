@@ -1,6 +1,12 @@
 # zmd-plugin（TRSS-Yunzai）
 
 [![GitHub Stars](https://img.shields.io/github/stars/Anon-deisu/zmd-plugin?style=flat-square&logo=github)](https://github.com/Anon-deisu/zmd-plugin/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/Anon-deisu/zmd-plugin?style=flat-square&logo=github)](https://github.com/Anon-deisu/zmd-plugin/network)
+[![GitHub Last Commit](https://img.shields.io/github/last-commit/Anon-deisu/zmd-plugin?style=flat-square&logo=github)](https://github.com/Anon-deisu/zmd-plugin/commits/main)
+[![GitHub Release](https://img.shields.io/github/v/release/Anon-deisu/zmd-plugin?style=flat-square&logo=github)](https://github.com/Anon-deisu/zmd-plugin/releases)
+[![GitHub License](https://img.shields.io/github/license/Anon-deisu/zmd-plugin?style=flat-square)](https://github.com/Anon-deisu/zmd-plugin)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Anon-deisu/zmd-plugin&type=Date)](https://star-history.com/#Anon-deisu/zmd-plugin&Date)
 
 > 适用于 `TRSS-Yunzai` 的终末地（Endfield）/ 森空岛（Skland）插件。  
 > 提供登录绑定、每日查询、卡片/面板、基建、公告、抽卡记录、Wiki 图鉴，以及 `#fz` 明日方舟功能。
