@@ -41,7 +41,9 @@
       <strong>开始使用</strong><br/>
       <a href="#overview">功能概览</a><br/>
       <a href="#quick-start">快速开始</a><br/>
+      <a href="#quick-start-examples">首次使用示例</a><br/>
       <a href="#installation">安装</a><br/>
+      <a href="#installation-requirements">安装前确认</a><br/>
       <a href="#installation-git">Git 安装</a><br/>
       <a href="#installation-manual">手动安装</a>
     </td>
@@ -138,10 +140,67 @@
    - `#zmd抽卡记录`
 6. 查看完整帮助：`#zmd帮助`
 
+新手建议：
+
+- 第一次绑定账号请优先使用私聊：`#zmd登录`
+- 只想查面板、不想登录时，可直接绑定 UID：`#zmd绑定<UID>`
+- 想查更完整的 UID-only 面板数据，再继续看 `角色数据接口` 一节
+
+<a id="quick-start-examples"></a>
+### 首次使用示例
+
+#### 方案一：正常登录后使用（推荐）
+
+先私聊机器人：
+
+```text
+#zmd登录
+```
+
+绑定完成后再使用：
+
+```text
+#zmd刷新
+#zmd每日
+#zmd卡片
+#管理员面板
+#zmd抽卡记录
+```
+
+#### 方案二：只想查面板，不登录
+
+```text
+#zmd绑定123456789
+#管理员面板
+```
+
+说明：这种方式适合临时查面板，但是否能查到目标角色，取决于 Friend API 是否返回该 UID 的展示位角色。
+
+#### 方案三：使用明日方舟功能（`#fz`）
+
+`#fz` 复用森空岛绑定，不需要单独再绑一次：
+
+```text
+#fz签到
+#fz更新抽卡记录
+#fz抽卡记录
+```
+
 <p align="right"><a href="#quick-nav">返回导航</a></p>
 
 <a id="installation"></a>
 ## 安装
+
+<a id="installation-requirements"></a>
+### 安装前确认
+
+开始前建议确认下面几项：
+
+- 你已经有可正常运行的 `TRSS-Yunzai`
+- `Redis` 已正常连接，否则账号绑定和部分缓存功能会异常
+- 环境里能使用 `Node.js` 与 `pnpm`
+- 如果你只使用基础功能，先不配置 Friend API 也可以启动
+- 如果你要查更完整的 UID-only 面板，后面再补统一后端 / 本地 API 配置
 
 <a id="installation-git"></a>
 ### 方式一：Git 安装（推荐）
