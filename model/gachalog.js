@@ -22,6 +22,7 @@ import { getCardDetailForUser } from "./card.js"
 import { ensureListData } from "./wiki/fetch.js"
 import {
   buildHypergryphHeaders,
+  findBestAccountByUid,
   getActiveAccount,
   getOrCreateHypergryphDevice,
   getUserData,
@@ -148,19 +149,22 @@ function getQqAvatarUrl(userId) {
   return `https://q.qlogo.cn/headimg_dl?dst_uin=${encodeURIComponent(id)}&spec=640`
 }
 
-function getCachedRoleOwner(roleId) {
+function getCachedRoleOwner(roleId, { requireCred = false } = {}) {
   const rid = String(roleId ?? "").trim()
   if (!rid) return null
 
   const cached = roleOwnerCache.get(rid)
   if (!cached) return null
-  if ((cached.expiresAt || 0) > Date.now()) return cached
+  if ((cached.expiresAt || 0) <= Date.now()) {
+    roleOwnerCache.delete(rid)
+    return null
+  }
+  if (requireCred && !cached.hasCred) return null
+  return cached
 
-  roleOwnerCache.delete(rid)
-  return null
 }
 
-function setCachedRoleOwner(roleId, { userId = "", nickname = "" } = {}) {
+function setCachedRoleOwner(roleId, { userId = "", nickname = "", hasCred = false } = {}) {
   const rid = String(roleId ?? "").trim()
   if (!rid) return
 
@@ -169,24 +173,29 @@ function setCachedRoleOwner(roleId, { userId = "", nickname = "" } = {}) {
   roleOwnerCache.set(rid, {
     userId: uid,
     nickname: String(nickname ?? "").trim(),
+    hasCred: !!hasCred,
     expiresAt: Date.now() + ttl,
   })
 }
 
-async function findBoundUserByRoleId(roleId) {
+async function findBoundUserByRoleId(roleId, { requireCred = false } = {}) {
   const rid = String(roleId ?? "").trim()
-  if (!rid) return { userId: "", nickname: "" }
+  if (!rid) return { userId: "", nickname: "", hasCred: false }
 
-  const cached = getCachedRoleOwner(rid)
-  if (cached) return { userId: cached.userId, nickname: cached.nickname }
+  const cached = getCachedRoleOwner(rid, { requireCred })
+  if (cached && (!requireCred || cached.hasCred)) {
+    return { userId: cached.userId, nickname: cached.nickname, hasCred: !!cached.hasCred }
+  }
 
   let userIds = []
   try {
     userIds = await redis.sMembers(KEY_USERS)
   } catch {
     setCachedRoleOwner(rid, {})
-    return { userId: "", nickname: "" }
+    return { userId: "", nickname: "", hasCred: false }
   }
+
+  let fallback = { userId: "", nickname: "", hasCred: false }
 
   for (const uidRaw of userIds) {
     const uid = String(uidRaw ?? "").trim()
@@ -194,18 +203,27 @@ async function findBoundUserByRoleId(roleId) {
     try {
       const data = await getUserData(uid)
       const accounts = Array.isArray(data?.accounts) ? data.accounts : []
-      const found = accounts.find(a => String(a?.uid || "").trim() === rid)
-      if (!found) continue
+      const withCred = findBestAccountByUid(accounts, rid, { requireCred: true })
+      if (withCred) {
+        const res = { userId: uid, nickname: String(withCred?.nickname || "").trim(), hasCred: true }
+        setCachedRoleOwner(rid, res)
+        return res
+      }
 
-      const nickname = String(found?.nickname || "").trim()
-      const res = { userId: uid, nickname }
-      setCachedRoleOwner(rid, res)
-      return res
+      if (!requireCred && !fallback.userId) {
+        const found = findBestAccountByUid(accounts, rid)
+        if (found) fallback = { userId: uid, nickname: String(found?.nickname || "").trim(), hasCred: !!found?.cred }
+      }
     } catch {}
   }
 
+  if (fallback.userId && !requireCred) {
+    setCachedRoleOwner(rid, fallback)
+    return fallback
+  }
+
   setCachedRoleOwner(rid, {})
-  return { userId: "", nickname: "" }
+  return { userId: "", nickname: "", hasCred: false }
 }
 
 function formatYmdRangeFromMs(items) {
@@ -224,13 +242,32 @@ function getMaxSeqId(items) {
   return Math.max(...items.map(i => safeInt(i?.seqId, 0)))
 }
 
+function getMaxSeqIdBySourcePoolType(items, sourcePoolType) {
+  const poolType = String(sourcePoolType || "").trim()
+  if (!poolType) return getMaxSeqId(items)
+
+  const filtered = (items || []).filter(i => String(i?.sourcePoolType || "").trim() === poolType)
+  if (!filtered.length) return 0
+  return getMaxSeqId(filtered)
+}
+
+function markRecordsWithSourcePoolType(records, sourcePoolType) {
+  const poolType = String(sourcePoolType || "").trim()
+  if (!poolType) return Array.isArray(records) ? records : []
+  return (Array.isArray(records) ? records : []).map(record => {
+    if (!record || typeof record !== "object") return record
+    if (String(record.sourcePoolType || "").trim() === poolType) return record
+    return { ...record, sourcePoolType: poolType }
+  })
+}
+
 function mergeRecords(existing, newRecords) {
-  const existingSeq = new Set((existing || []).map(r => String(r?.seqId ?? "")))
+  const existingSeq = new Set((existing || []).map(getItemKey).filter(Boolean))
   const merged = Array.isArray(existing) ? existing.slice() : []
   let newCount = 0
 
   for (const r of newRecords || []) {
-    const id = String(r?.seqId ?? "")
+    const id = getItemKey(r)
     if (!id) continue
     if (existingSeq.has(id)) continue
     existingSeq.add(id)
@@ -238,7 +275,7 @@ function mergeRecords(existing, newRecords) {
     newCount++
   }
 
-  merged.sort((a, b) => safeInt(b?.seqId) - safeInt(a?.seqId))
+  merged.sort(sortTsSeqDesc)
   return { merged, newCount }
 }
 
@@ -398,6 +435,7 @@ function getItemKey(item) {
   const poolId = String(item?.poolId || "")
   const gachaTs = String(item?.gachaTs ?? "")
   const seqId = String(item?.seqId ?? "")
+  if (!poolId && !gachaTs && !seqId) return ""
   return `${poolId}|${gachaTs}|${seqId}`
 }
 
@@ -658,14 +696,14 @@ export async function updateGachaLogsForRoleId(userId, roleId, { full = false } 
   try {
     const data = await getUserData(userId)
     const accounts = Array.isArray(data?.accounts) ? data.accounts : []
-    const account = accounts.find(a => String(a?.uid || "").trim() === rid)
+    const account = findBestAccountByUid(accounts, rid, { requireCred: true })
     if (account?.cred) return await updateGachaLogsForAccount(userId, account, { full })
   } catch {}
 
   // 公共刷新：调用者未绑定该 UID 时，尝试使用“已绑定该 UID 的用户”来刷新。
   // 注意：这不会把账号绑定到调用者，只是复用持有者的登录态来更新本地缓存文件。
   try {
-    const owner = await findBoundUserByRoleId(rid)
+    const owner = await findBoundUserByRoleId(rid, { requireCred: true })
     const ownerId = String(owner?.userId || "").trim()
     if (!ownerId) {
       return {
@@ -676,7 +714,7 @@ export async function updateGachaLogsForRoleId(userId, roleId, { full = false } 
 
     const ownerData = await getUserData(ownerId)
     const ownerAccounts = Array.isArray(ownerData?.accounts) ? ownerData.accounts : []
-    const ownerAccount = ownerAccounts.find(a => String(a?.uid || "").trim() === rid)
+    const ownerAccount = findBestAccountByUid(ownerAccounts, rid, { requireCred: true })
     if (!ownerAccount?.cred) {
       return {
         ok: false,
@@ -714,7 +752,9 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
     const existingChar = Array.isArray(existing?.charList) ? existing.charList : []
     const existingWeapon = Array.isArray(existing?.weaponList) ? existing.weaponList : []
 
-    const charMaxSeqId = full ? 0 : getMaxSeqId(existingChar)
+    const charMaxSeqIdByPoolType = new Map(
+      CHARACTER_POOL_TYPES.map(poolType => [poolType, full ? 0 : getMaxSeqIdBySourcePoolType(existingChar, poolType)]),
+    )
     const weaponMaxSeqId = full ? 0 : getMaxSeqId(existingWeapon)
 
     const { u8Token, recordUid: finalRecordUid } = await getU8Token({
@@ -736,9 +776,9 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
         u8Token,
         serverId,
         extraParams: { pool_type: poolType },
-        existingMaxSeqId: charMaxSeqId,
+        existingMaxSeqId: charMaxSeqIdByPoolType.get(poolType) || 0,
       })
-      fetchedChar.push(...list)
+      fetchedChar.push(...markRecordsWithSourcePoolType(list, poolType))
     }
 
     const fetchedWeapon = await fetchEfRecords(EF_WEAPON_URL, {
@@ -866,7 +906,7 @@ export async function getGachaLogViewForRoleId(roleId, { userId, account, allowU
     try {
       const data = await getUserData(callerId)
       const accounts = Array.isArray(data?.accounts) ? data.accounts : []
-      const found = accounts.find(a => String(a?.uid || "").trim() === rid)
+      const found = findBestAccountByUid(accounts, rid)
       if (found && typeof found === "object") {
         accountHint = { ...found }
         callerHasRole = true
@@ -1362,7 +1402,7 @@ export async function importGachaLogsFromU8TokenForUser(userId, u8TokenInput) {
     const existingChar = Array.isArray(existing?.charList) ? existing.charList : []
     const existingWeapon = Array.isArray(existing?.weaponList) ? existing.weaponList : []
 
-    const charMaxSeqId = getMaxSeqId(existingChar)
+    const charMaxSeqIdByPoolType = new Map(CHARACTER_POOL_TYPES.map(poolType => [poolType, getMaxSeqIdBySourcePoolType(existingChar, poolType)]))
     const weaponMaxSeqId = getMaxSeqId(existingWeapon)
 
     const fetchedChar = []
@@ -1371,9 +1411,9 @@ export async function importGachaLogsFromU8TokenForUser(userId, u8TokenInput) {
         u8Token,
         serverId,
         extraParams: { pool_type: poolType },
-        existingMaxSeqId: charMaxSeqId,
+        existingMaxSeqId: charMaxSeqIdByPoolType.get(poolType) || 0,
       })
-      fetchedChar.push(...list)
+      fetchedChar.push(...markRecordsWithSourcePoolType(list, poolType))
     }
 
     const fetchedWeapon = await fetchEfRecords(EF_WEAPON_URL, {
