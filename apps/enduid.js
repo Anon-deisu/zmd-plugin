@@ -573,6 +573,7 @@ export class enduid extends plugin {
         items: [
           { name: "签到", cmd: `${fz}签到`, desc: "" },
           { name: "自动签到", cmd: `${fz}开启自动签到 / ${fz}关闭自动签到`, desc: "" },
+          { name: "全部签到", cmd: `${fz}全部签到`, desc: "执行全部签到任务", badge: "MASTER" },
           { name: "抽卡记录", cmd: `${fz}更新抽卡记录 / ${fz}抽卡记录`, desc: "限定/常驻/中坚聚合" },
         ],
       },
@@ -696,6 +697,7 @@ export class enduid extends plugin {
       `【明日方舟】`,
       `- ${fz}签到`,
       `- ${fz}开启自动签到 / ${fz}关闭自动签到`,
+      isMaster ? `- ${fz}全部签到（仅 master）` : "",
       `- ${fz}更新抽卡记录 / ${fz}抽卡记录（限定/常驻/中坚聚合）`,
       ``,
       `【其他】`,
@@ -1711,6 +1713,7 @@ export class enduid extends plugin {
           "enduid/all_sign",
           {
             title: `${GAME_TITLE} 全部签到`,
+            subtitle: "终末地账号批量签到结果",
             time: `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`,
             success,
             signed,
@@ -1721,6 +1724,7 @@ export class enduid extends plugin {
             truncated: remain > 0,
             shown: shown.length,
             remain,
+            theme: "zmd",
             imgType: "png",
             copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
           },

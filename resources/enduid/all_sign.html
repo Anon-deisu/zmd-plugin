@@ -2,8 +2,8 @@
 <!--
   enduid/all_sign
 
-  渲染入口：apps/enduid.js（#zmd全部签到）
-  期望参数：title/time/success/signed/fail/skip/total/items/truncated/shown/remain
+  渲染入口：apps/enduid.js / apps/fz.js（#zmd全部签到 / #fz全部签到）
+  期望参数：title/subtitle/time/success/signed/fail/skip/total/items/truncated/shown/remain/theme
 -->
 
 {{block 'css'}}
@@ -11,34 +11,67 @@
 {{/block}}
 
 {{block 'main'}}
-<div class="header">
-  <div class="title">{{title}}</div>
-  <div class="time">{{time}}</div>
-</div>
+<div class="report report-{{theme || 'zmd'}}">
+  <div class="hero">
+    <div class="hero-copy">
+      <div class="eyebrow">Batch Sign Report</div>
+      <div class="title">{{title}}</div>
+      <div class="subtitle">{{subtitle || '批量签到结果汇总'}}</div>
+    </div>
+    <div class="hero-time">
+      <div class="time-label">生成时间</div>
+      <div class="time-value">{{time}}</div>
+    </div>
+  </div>
 
-<div class="card">
-  <div class="stats">
-    <div class="pill success">成功 {{success}}</div>
-    <div class="pill signed">已签 {{signed}}</div>
-    <div class="pill fail">失败 {{fail}}</div>
-    {{if skip && skip > 0}}
-    <div class="pill skip">跳过 {{skip}}</div>
-    {{/if}}
-    <div class="pill total">总计 {{total}}</div>
+  <div class="overview">
+    <div class="metric metric-total">
+      <div class="metric-label">总计</div>
+      <div class="metric-value">{{total}}</div>
+    </div>
+    <div class="metric metric-success">
+      <div class="metric-label">成功</div>
+      <div class="metric-value">{{success}}</div>
+    </div>
+    <div class="metric metric-signed">
+      <div class="metric-label">已签</div>
+      <div class="metric-value">{{signed}}</div>
+    </div>
+    <div class="metric metric-fail">
+      <div class="metric-label">失败</div>
+      <div class="metric-value">{{fail}}</div>
+    </div>
+    <div class="metric metric-skip">
+      <div class="metric-label">跳过</div>
+      <div class="metric-value">{{skip || 0}}</div>
+    </div>
   </div>
 
   {{if truncated}}
-  <div class="tip">仅展示前 <strong>{{shown}}</strong> 条，剩余 <strong>{{remain}}</strong> 条未展示</div>
+  <div class="notice">
+    <span class="notice-tag">已截断</span>
+    仅展示前 <strong>{{shown}}</strong> 条，剩余 <strong>{{remain}}</strong> 条未展示
+  </div>
   {{/if}}
+
+  <div class="section-head">
+    <div class="section-title">执行明细</div>
+    <div class="section-subtitle">按执行顺序展示最近批次结果</div>
+  </div>
 
   <div class="list">
     {{each items it}}
     <div class="item item-{{it.status}}">
-      <div class="dot"></div>
-      <div class="item-body">
-        <div class="item-head">
-          <div class="uid">UID:{{it.uid}}</div>
-          <div class="name">{{it.name}}</div>
+      <div class="item-index">{{$index + 1}}</div>
+      <div class="item-main">
+        <div class="item-top">
+          <div class="identity">
+            <div class="uid">UID:{{it.uid}}</div>
+            <div class="name">{{it.name}}</div>
+          </div>
+          <div class="status-tag status-{{it.status}}">
+            {{if it.status === 'success'}}成功{{else if it.status === 'signed'}}已签{{else if it.status === 'fail'}}失败{{else}}跳过{{/if}}
+          </div>
         </div>
         <div class="msg">{{it.msg}}</div>
       </div>
