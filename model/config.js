@@ -132,6 +132,16 @@ const DEFAULT_CONFIG = {
     /** fetch 失败时是否允许 puppeteer 兜底 */
     enablePuppeteerFallback: true,
   },
+  activity: {
+    /** 活动日历提醒定时任务开关 */
+    enableTask: true,
+    /** 活动提醒定时（6 段 cron：秒 分 时 日 月 周） */
+    cron: "0 */15 * * * *",
+    /** 日历默认展示未来天数 */
+    listDays: 21,
+    /** 默认提前多少小时提醒活动开始/结束 */
+    remindBeforeHours: 24,
+  },
   autoSign: {
     enableTask: true,
     cron: "0 5 4 * * *",

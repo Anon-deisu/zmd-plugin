@@ -13,6 +13,17 @@ import { ensureListData, getCharWiki, getWeaponWiki } from "../model/wiki/fetch.
 import { resolveWeaponAlias } from "../model/wiki/weaponAlias.js"
 
 const GAME_TITLE = "[终末地]"
+const KEY_ACTIVITY_SUBS = "Yz:EndUID:Activity:Subs"
+const KEY_ACTIVITY_SEEN_PREFIX = "Yz:EndUID:Activity:Seen:"
+const DAY_SEC = 86400
+
+function safeJsonParse(text, fallback) {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return fallback
+  }
+}
 
 function formatTime(tsSec) {
   const t = Number(tsSec) || 0
@@ -53,6 +64,118 @@ function shorten(text, maxLen = 120) {
   const s = String(text || "").replace(/\s+/g, " ").trim()
   if (!s) return ""
   return s.length > maxLen ? `${s.slice(0, Math.max(1, maxLen - 1))}…` : s
+}
+
+function formatRemainText(targetTs, { nowTs = Math.floor(Date.now() / 1000), endedText = "已结束" } = {}) {
+  const ts = Number(targetTs) || 0
+  if (!ts) return "-"
+  const diff = ts - nowTs
+  if (diff <= 0) return endedText
+  if (diff < 3600) return `${Math.max(1, Math.ceil(diff / 60))} 分钟后`
+  if (diff < DAY_SEC) return `${Math.ceil(diff / 3600)} 小时后`
+  if (diff < 30 * DAY_SEC) return `${Math.ceil(diff / DAY_SEC)} 天后`
+  if (diff < 60 * DAY_SEC) return "1 个月后"
+  return `${Math.floor(diff / (30 * DAY_SEC))} 个月后`
+}
+
+function buildActivityId(item, index) {
+  return [
+    item?.banner_type || "",
+    item?.banner_name || "",
+    item?.target_name || "",
+    Number(item?.start_timestamp) || 0,
+    Number(item?.end_timestamp) || 0,
+    index,
+  ].join(":")
+}
+
+function normalizeActivityEntries(data) {
+  const list = Array.isArray(data?.gacha) ? data.gacha : []
+  return list
+    .map((item, index) => ({
+      id: buildActivityId(item, index),
+      title: String(item?.banner_name || "").trim() || "（未命名卡池）",
+      typeLabel: item?.banner_type === "weapon" ? "武器池" : "角色池",
+      targetName: String(item?.target_name || "").trim(),
+      relatedEvents: Array.isArray(item?.events) ? item.events.filter(Boolean).map(x => String(x).trim()).filter(Boolean) : [],
+      startTs: Number(item?.start_timestamp) || 0,
+      endTs: Number(item?.end_timestamp) || 0,
+    }))
+    .filter(item => item.title)
+    .sort((a, b) => {
+      const startDiff = (a.startTs || Number.MAX_SAFE_INTEGER) - (b.startTs || Number.MAX_SAFE_INTEGER)
+      if (startDiff !== 0) return startDiff
+      return a.title.localeCompare(b.title, "zh-Hans-CN")
+    })
+}
+
+function buildActivityCardLines(item, nowTs) {
+  const isUpcoming = item.startTs > nowTs
+  const isActive = item.startTs > 0 && item.startTs <= nowTs && (!item.endTs || item.endTs > nowTs)
+  const status = isUpcoming ? "即将开启" : isActive ? "进行中" : "已结束"
+  return [
+    `${item.title}（${item.typeLabel} / ${status}）`,
+    item.targetName ? `目标：${item.targetName}` : "",
+    item.relatedEvents.length ? `关联活动：${joinList(item.relatedEvents, { sep: "；", maxLen: 800 })}` : "",
+    `时间：${formatTime(item.startTs)} ~ ${formatTime(item.endTs)}`,
+    isUpcoming
+      ? `开启：${formatRemainText(item.startTs, { nowTs, endedText: "已开启" })}`
+      : `结束：${formatRemainText(item.endTs, { nowTs, endedText: "已结束" })}`,
+  ].filter(Boolean)
+}
+
+function activitySeenKey(sub) {
+  const type = String(sub?.push_type || "private").trim() || "private"
+  const target = String(sub?.push_target || sub?.user_id || "").trim()
+  return `${KEY_ACTIVITY_SEEN_PREFIX}${type}:${target}`
+}
+
+async function getActivitySubList() {
+  try {
+    const raw = await redis.get(KEY_ACTIVITY_SUBS)
+    const parsed = raw ? safeJsonParse(raw, []) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+async function setActivitySubList(list) {
+  try {
+    await redis.set(KEY_ACTIVITY_SUBS, JSON.stringify(Array.isArray(list) ? list : []))
+  } catch {}
+}
+
+async function getActivitySeenList(sub) {
+  try {
+    const raw = await redis.get(activitySeenKey(sub))
+    const parsed = raw ? safeJsonParse(raw, []) : []
+    return Array.isArray(parsed) ? parsed.map(x => String(x)) : []
+  } catch {
+    return []
+  }
+}
+
+async function setActivitySeenList(sub, list) {
+  try {
+    await redis.set(activitySeenKey(sub), JSON.stringify(Array.isArray(list) ? list : []))
+  } catch {}
+}
+
+function getReminderHours(sub) {
+  const custom = Number(sub?.before_hours)
+  if (Number.isFinite(custom) && custom > 0) return Math.min(168, Math.max(1, Math.floor(custom)))
+  return Math.min(168, Math.max(1, Number(cfg.activity?.remindBeforeHours) || 24))
+}
+
+async function sendActivityReminderMessage(sub, msg) {
+  const type = String(sub?.push_type || "private").trim()
+  const target = String(sub?.push_target || sub?.user_id || "").trim()
+  if (type === "group" && target) {
+    await Bot.pickGroup(target).sendMsg(msg)
+    return
+  }
+  if (target) await Bot.pickFriend(target).sendMsg(msg)
 }
 
 function buildCharSummaryReply(charWiki) {
@@ -174,8 +297,17 @@ export class wiki extends plugin {
         { reg: "^#?(?:终末地|zmd)角色列表$", fnc: "charList" },
         { reg: "^#?(?:终末地|zmd)武器列表$", fnc: "weaponList" },
         { reg: "^#?(?:终末地|zmd)(?:卡池|卡池信息|up角色)$", fnc: "gacha" },
+        { reg: "^#?(?:终末地|zmd)(?:日历|活动日历|活动)$", fnc: "calendar" },
+        { reg: "^#?(?:终末地|zmd)(?:订阅活动提醒|活动提醒订阅)(?:\\s*(\\d+))?$", fnc: "subscribeActivityReminder" },
+        { reg: "^#?(?:终末地|zmd)(?:取消订阅活动提醒|取消活动提醒)$", fnc: "unsubscribeActivityReminder" },
+        { reg: "^#?(?:终末地|zmd)活动提醒列表$", fnc: "listActivityReminder" },
         { reg: "^#?(?:终末地|zmd)\\s*(.+?)\\s*(图鉴|介绍|技能|天赋|潜能|专武|武器)$", fnc: "query" },
       ],
+      task: {
+        name: "zmd-plugin活动提醒",
+        cron: String(cfg.activity?.cron || "0 */15 * * * *"),
+        fnc: () => this.runActivityReminderTask(),
+      },
     })
   }
 
@@ -262,6 +394,189 @@ export class wiki extends plugin {
 
     await e.reply(common.makeForwardMsg(e, forward, "终末地-卡池信息"))
     return true
+  }
+
+  async calendar() {
+    const e = this.e
+    const data = await ensureListData()
+    const list = normalizeActivityEntries(data)
+    if (!list.length) {
+      await e.reply(`${GAME_TITLE} 暂无活动日历数据`, true)
+      return true
+    }
+
+    const nowTs = Math.floor(Date.now() / 1000)
+    const listDays = Math.max(1, Number(cfg.activity?.listDays) || 21)
+    const upcomingLimitTs = nowTs + listDays * DAY_SEC
+    const ongoing = list.filter(item => item.startTs > 0 && item.startTs <= nowTs && (!item.endTs || item.endTs > nowTs))
+    const upcoming = list.filter(item => item.startTs > nowTs && item.startTs <= upcomingLimitTs)
+
+    const summary = [
+      `${GAME_TITLE} 活动日历（更新：${formatTime(data.fetch_time)}）`,
+      `进行中：${ongoing.length} 个`,
+      `未来 ${listDays} 天：${upcoming.length} 个`,
+      `提醒：${this.getCmdPrefixHint()}订阅活动提醒`,
+    ].join("\n")
+
+    const forward = []
+    forward.push([summary])
+
+    if (ongoing.length) {
+      forward.push(["【进行中】"])
+      for (const item of ongoing) forward.push([buildActivityCardLines(item, nowTs).join("\n")])
+    }
+
+    if (upcoming.length) {
+      forward.push(["【即将开启】"])
+      for (const item of upcoming) forward.push([buildActivityCardLines(item, nowTs).join("\n")])
+    }
+
+    if (!ongoing.length && !upcoming.length) {
+      forward.push([`${GAME_TITLE} 当前没有处于进行中或未来 ${listDays} 天内可见的卡池活动`])
+    }
+
+    await e.reply(common.makeForwardMsg(e, forward, "终末地-活动日历"))
+    return true
+  }
+
+  async subscribeActivityReminder() {
+    const e = this.e
+    const raw = String(e.msg || "").trim()
+    const matchedHours = raw.match(/(\d{1,3})/)
+    const beforeHours = matchedHours?.[1] ? Math.min(168, Math.max(1, Number(matchedHours[1]) || 24)) : 0
+    const isGroup = !!e.isGroup
+    const sub = {
+      bot_id: String(e.self_id || ""),
+      user_id: String(e.user_id || ""),
+      group_id: isGroup ? String(e.group_id || "") : "",
+      push_type: isGroup ? "group" : "private",
+      push_target: isGroup ? String(e.group_id || "") : String(e.user_id || ""),
+      before_hours: beforeHours,
+      nickname: String(e.sender?.card || e.sender?.nickname || e.user_id || "").trim(),
+    }
+
+    const list = await getActivitySubList()
+    const idx = list.findIndex(item => (
+      String(item?.bot_id || "") === sub.bot_id
+      && String(item?.user_id || "") === sub.user_id
+      && String(item?.group_id || "") === sub.group_id
+    ))
+
+    if (idx >= 0) list[idx] = { ...list[idx], ...sub }
+    else list.push(sub)
+
+    await setActivitySubList(list)
+    await setActivitySeenList(sub, [])
+
+    const hours = getReminderHours(sub)
+    await e.reply(
+      `${GAME_TITLE} 已订阅活动提醒\n推送位置：${isGroup ? "当前群聊" : "当前私聊"}\n提醒窗口：提前 ${hours} 小时\n查看日历：${this.getCmdPrefixHint()}日历`,
+      true,
+    )
+    return true
+  }
+
+  async unsubscribeActivityReminder() {
+    const e = this.e
+    const isGroup = !!e.isGroup
+    const botId = String(e.self_id || "")
+    const userId = String(e.user_id || "")
+    const groupId = isGroup ? String(e.group_id || "") : ""
+    const list = await getActivitySubList()
+    const filtered = list.filter(item => !(
+      String(item?.bot_id || "") === botId
+      && String(item?.user_id || "") === userId
+      && String(item?.group_id || "") === groupId
+    ))
+
+    if (filtered.length === list.length) {
+      await e.reply(`${GAME_TITLE} 当前会话还没有订阅活动提醒`, true)
+      return true
+    }
+
+    await setActivitySubList(filtered)
+    await setActivitySeenList({ push_type: isGroup ? "group" : "private", push_target: isGroup ? groupId : userId, user_id: userId }, [])
+    await e.reply(`${GAME_TITLE} 已取消活动提醒`, true)
+    return true
+  }
+
+  async listActivityReminder() {
+    const e = this.e
+    const isGroup = !!e.isGroup
+    const botId = String(e.self_id || "")
+    const userId = String(e.user_id || "")
+    const groupId = isGroup ? String(e.group_id || "") : ""
+    const list = await getActivitySubList()
+    const current = list.find(item => (
+      String(item?.bot_id || "") === botId
+      && String(item?.user_id || "") === userId
+      && String(item?.group_id || "") === groupId
+    ))
+
+    if (!current) {
+      await e.reply(`${GAME_TITLE} 当前会话未订阅活动提醒\n可用：${this.getCmdPrefixHint()}订阅活动提醒`, true)
+      return true
+    }
+
+    const hours = getReminderHours(current)
+    await e.reply(
+      `${GAME_TITLE} 活动提醒订阅中\n推送位置：${isGroup ? "当前群聊" : "当前私聊"}\n提醒窗口：提前 ${hours} 小时\n取消订阅：${this.getCmdPrefixHint()}取消订阅活动提醒`,
+      true,
+    )
+    return true
+  }
+
+  async runActivityReminderTask() {
+    if (cfg.activity?.enableTask === false) return
+
+    const list = await getActivitySubList()
+    if (!list.length) return
+
+    const data = await ensureListData()
+    const activities = normalizeActivityEntries(data).filter(item => item.startTs || item.endTs)
+    if (!activities.length) return
+
+    const nowTs = Math.floor(Date.now() / 1000)
+    for (const sub of list) {
+      const seenList = await getActivitySeenList(sub)
+      const seenSet = new Set(seenList)
+      const windowHours = getReminderHours(sub)
+      const windowSec = windowHours * 3600
+      const lines = []
+
+      for (const item of activities) {
+        if (item.startTs > nowTs && item.startTs - nowTs <= windowSec) {
+          const key = `start:${item.id}:${item.startTs}`
+          if (!seenSet.has(key)) {
+            seenSet.add(key)
+            lines.push(`- 即将开启：${item.title}（${item.typeLabel}）`)
+            lines.push(`  时间：${formatTime(item.startTs)} ~ ${formatTime(item.endTs)}`)
+            if (item.targetName) lines.push(`  目标：${item.targetName}`)
+            lines.push(`  开启：${formatRemainText(item.startTs, { nowTs, endedText: "已开启" })}`)
+          }
+        }
+
+        if (item.endTs > nowTs && item.endTs - nowTs <= windowSec) {
+          const key = `end:${item.id}:${item.endTs}`
+          if (!seenSet.has(key)) {
+            seenSet.add(key)
+            lines.push(`- 即将结束：${item.title}（${item.typeLabel}）`)
+            lines.push(`  时间：${formatTime(item.startTs)} ~ ${formatTime(item.endTs)}`)
+            if (item.targetName) lines.push(`  目标：${item.targetName}`)
+            lines.push(`  结束：${formatRemainText(item.endTs, { nowTs, endedText: "已结束" })}`)
+          }
+        }
+      }
+
+      await setActivitySeenList(sub, Array.from(seenSet).slice(-300))
+      if (!lines.length) continue
+
+      try {
+        await sendActivityReminderMessage(sub, [`${GAME_TITLE} 活动提醒`, ...lines].join("\n"))
+      } catch (err) {
+        logger?.warn?.("[zmd-plugin] 活动提醒推送失败", sub?.push_target, err)
+      }
+    }
   }
 
   async query() {
