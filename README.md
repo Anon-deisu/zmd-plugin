@@ -4,7 +4,7 @@
 
 <p>
   适用于 <code>TRSS-Yunzai</code> 的终末地（Endfield）/ 森空岛（Skland）插件。<br/>
-  提供登录绑定、每日查询、卡片 / 面板、基建、公告、抽卡记录、Wiki 图鉴，以及 <code>#fz</code> 明日方舟功能。
+  提供登录绑定、每日查询、卡片 / 面板、基建、公告、活动日历 / 提醒、抽卡记录、Wiki 图鉴，以及 <code>#fz</code> 明日方舟功能。
 </p>
 
 <p>
@@ -108,16 +108,19 @@
 ### 终末地能力
 
 - 账号：私聊扫码登录 / 手动绑定 `cred` 或 `token` / 仅绑定 UID（面板查询）
-- 查询：每日、卡片、面板、基建 / 飞船、公告
+- 查询：每日、卡片、面板、基建 / 飞船、公告、活动日历
 - 抽卡记录：更新 / 全量更新 / 查看 / 导入 / 导出 / 删除
+- 活动提醒：订阅 / 取消订阅 / 查看当前会话提醒状态
 - 图鉴：角色列表、武器列表、卡池、角色 / 武器图鉴、技能 / 天赋 / 潜能分项查询
 
 <a id="overview-fz"></a>
 ### 明日方舟能力（`#fz`）
 
 - 森空岛签到 / 全部签到 / 自动签到
+- 活动速览：查看进行中、即将结束、即将开启的活动
 - 抽卡记录工具链：更新、全量更新、导入、导出、删除、查看
 - 抽卡记录按 `限定 / 常驻 / 中坚` 聚合展示
+- 抽卡分析：整体统计与指定卡池统计
 
 <a id="overview-tools"></a>
 ### 辅助能力
@@ -352,6 +355,7 @@ friendApi:
 - `#<角色>面板<@用户>`：推荐用法，例如 `#管理员面板`
 - `#zmd面板<角色>`：兼容旧用法
 - `#zmd基建<@用户>`
+- `#zmd日历` / `#zmd活动日历` / `#zmd活动`
 
 <a id="commands-gachalog"></a>
 ### 终末地抽卡记录
@@ -372,6 +376,9 @@ friendApi:
 - `#zmd公告<id>`：不填 `id` 时显示列表
 - `#zmd订阅公告`
 - `#zmd取消订阅公告`
+- `#zmd订阅活动提醒<小时>`：群聊 / 私聊订阅活动开始与结束提醒，小时数可选
+- `#zmd取消订阅活动提醒`
+- `#zmd活动提醒列表`
 - `#zmd清理公告缓存`：仅清理内存缓存，不影响订阅 / 已读；需机器人主人权限
 
 <a id="commands-wiki"></a>
@@ -407,11 +414,14 @@ friendApi:
 说明：复用本插件的森空岛绑定（`#zmd登录` / `#zmd绑定`），命令前缀固定为 `#fz`。
 
 - `#fz签到`
+- `#fz活动`
 - `#fz全部签到`（仅机器人主人）
 - `#fz开启自动签到` / `#fz关闭自动签到`
 - `#fz更新抽卡记录` / `#fz更新抽卡记录 @用户`
 - `#fz全量更新抽卡记录` / `#fz全量更新抽卡记录 @用户`
 - `#fz抽卡记录` / `#fz抽卡记录 @用户`
+- `#fz抽卡分析` / `#fz抽卡分析 @用户`
+- `#fz卡池分析 <卡池名>` / `#fz卡池分析 <卡池名> @用户`
 - `#fz导入抽卡记录`：发送 JSON 文件 / 粘贴 JSON / 文件链接
 - `#fz导出抽卡记录`
 - `#fz删除抽卡记录`
@@ -434,6 +444,7 @@ friendApi:
 | `friendApi.anonymousToken` / `friendApi.apiKey` / `friendApi.frameworkToken` | 本地 API 其他鉴权（可选） |
 | `friendApi.unifiedBaseUrl` | 统一后端地址 |
 | `friendApi.unifiedBearer` / `friendApi.unifiedApiKey` / `friendApi.unifiedFrameworkToken` / `friendApi.unifiedAnonymousToken` | 统一后端鉴权（可选） |
+| `activity.enableTask` / `activity.cron` / `activity.listDays` / `activity.remindBeforeHours` | 终末地活动日历与提醒配置 |
 | `fz.autoSign.*` | 明日方舟自动签到任务配置 |
 
 修改配置后建议重启机器人。
