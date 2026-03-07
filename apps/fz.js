@@ -15,7 +15,7 @@ import fetch from "node-fetch"
 import cfg from "../model/config.js"
 import { patchTempSessionReply } from "../model/reply.js"
 import { render as renderImg } from "../model/render.js"
-import { getQueryUserId } from "../model/mention.js"
+import { getMessageText, getQueryUserId } from "../model/mention.js"
 import { listBoundUsers } from "../model/store.js"
 import { attendanceArknights } from "../model/skland/client.js"
 import { getFzAccountForUser } from "../model/fz/account.js"
@@ -30,6 +30,12 @@ import { listFzAutoSignUsers, setFzAutoSign } from "../model/fz/store.js"
 
 const GAME_TITLE = "[明日方舟]"
 const PREFIX = "#fz"
+const AK_ACTIVITY_CACHE_KEY = "Yz:EndUID:FzActivityTable"
+const AK_ACTIVITY_CACHE_TTL_SEC = 1800
+const AK_ACTIVITY_URLS = [
+  "https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData@master/zh_CN/gamedata/excel/activity_table.json",
+  "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/refs/heads/master/zh_CN/gamedata/excel/activity_table.json",
+]
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -78,6 +84,184 @@ async function getSegment() {
 
 function normalizeText(text) {
   return String(text || "").trim()
+}
+
+function safeInt(value, def = 0) {
+  const n = Number.parseInt(`${value ?? ""}`, 10)
+  return Number.isFinite(n) ? n : def
+}
+
+function normalizeMs(ts) {
+  const num = Number(ts) || 0
+  if (num <= 0) return 0
+  return num > 1_000_000_000_000 ? num : num * 1000
+}
+
+function formatTs(ts) {
+  const ms = normalizeMs(ts)
+  if (!ms) return "-"
+  const d = new Date(ms)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  const hh = String(d.getHours()).padStart(2, "0")
+  const mi = String(d.getMinutes()).padStart(2, "0")
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`
+}
+
+function formatMd(ts) {
+  const ms = normalizeMs(ts)
+  if (!ms) return "-"
+  const d = new Date(ms)
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  return `${mm}.${dd}`
+}
+
+function formatRemain(ts, nowTsSec = Math.floor(Date.now() / 1000)) {
+  const target = safeInt(ts, 0)
+  if (!target) return "-"
+  const diff = target - nowTsSec
+  if (diff <= 0) return "已结束"
+  if (diff < 3600) return `${Math.max(1, Math.ceil(diff / 60))} 分钟后`
+  if (diff < 86400) return `${Math.ceil(diff / 3600)} 小时后`
+  return `${Math.ceil(diff / 86400)} 天后`
+}
+
+function buildRecordKey(item) {
+  return `${String(item?.poolId || "")}|${String(item?.gachaTs || "")}|${String(item?.pos || "")}`
+}
+
+function sortRecordDesc(a, b) {
+  const ta = safeInt(a?.gachaTs)
+  const tb = safeInt(b?.gachaTs)
+  if (ta !== tb) return tb - ta
+  return safeInt(b?.pos) - safeInt(a?.pos)
+}
+
+function sortRecordAsc(a, b) {
+  const ta = safeInt(a?.gachaTs)
+  const tb = safeInt(b?.gachaTs)
+  if (ta !== tb) return ta - tb
+  return safeInt(a?.pos) - safeInt(b?.pos)
+}
+
+function buildTopCostMap(items, { topRarity = 5 } = {}) {
+  const cost = new Map()
+  let since = 0
+  for (const item of (Array.isArray(items) ? items.slice().sort(sortRecordAsc) : [])) {
+    since += 1
+    if (safeInt(item?.rarity, -1) !== topRarity) continue
+    cost.set(buildRecordKey(item), since)
+    since = 0
+  }
+  return cost
+}
+
+function getCurrentPity(items, { topRarity = 5 } = {}) {
+  let pity = 0
+  for (const item of (Array.isArray(items) ? items.slice().sort(sortRecordDesc) : [])) {
+    if (safeInt(item?.rarity, -1) === topRarity) break
+    pity += 1
+  }
+  return pity
+}
+
+function buildSimpleStats(items) {
+  const total = Array.isArray(items) ? items.length : 0
+  const six = (items || []).filter(item => safeInt(item?.rarity, -1) === 5).length
+  const avg = total > 0 && six > 0 ? total / six : null
+  return { total, six, avg }
+}
+
+function normalizePoolKeyword(text) {
+  return String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s·・]/g, "")
+}
+
+function pickMatchedPool(poolMap, keyword) {
+  const q = normalizePoolKeyword(keyword)
+  if (!q) return { current: null, candidates: [] }
+
+  const candidates = [...poolMap.values()]
+    .filter(entry => {
+      const name = normalizePoolKeyword(entry.poolName)
+      return name === q || name.includes(q) || q.includes(name)
+    })
+    .sort((a, b) => {
+      const latestDiff = safeInt(b.latestTs) - safeInt(a.latestTs)
+      if (latestDiff !== 0) return latestDiff
+      return b.items.length - a.items.length
+    })
+
+  return { current: candidates[0] || null, candidates }
+}
+
+function normalizeAkActivityData(raw) {
+  const basicInfo = raw && typeof raw === "object" ? raw.basicInfo : null
+  const list = basicInfo && typeof basicInfo === "object" ? Object.values(basicInfo) : []
+  return list
+    .map(item => ({
+      id: String(item?.id || "").trim(),
+      name: String(item?.name || "").trim(),
+      type: String(item?.type || item?.displayType || "").trim(),
+      startTime: safeInt(item?.startTime, 0),
+      endTime: safeInt(item?.endTime, 0),
+      displayOnHome: !!item?.displayOnHome,
+      hasStage: !!item?.hasStage,
+      isPageEntry: !!item?.isPageEntry,
+    }))
+    .filter(item => item.name && item.startTime > 0 && item.endTime > 0)
+}
+
+function pickVisibleAkActivities(list) {
+  return (Array.isArray(list) ? list : []).filter(item => (
+    item.displayOnHome
+    || item.hasStage
+    || item.isPageEntry
+    || /签到|登录|公开招募|合作|试炼|限时任务/.test(item.name)
+  ))
+}
+
+async function getAkActivityData({ forceRefresh = false } = {}) {
+  if (!forceRefresh) {
+    try {
+      const cached = await redis.get(AK_ACTIVITY_CACHE_KEY)
+      const parsed = cached ? JSON.parse(cached) : null
+      if (Array.isArray(parsed?.list) && parsed.list.length) return parsed.list
+    } catch {}
+  }
+
+  let lastError = ""
+  for (const url of AK_ACTIVITY_URLS) {
+    try {
+      const resp = await fetch(url, {
+        method: "GET",
+        headers: {
+          "User-Agent": cfg.skland?.ua?.web || "Mozilla/5.0",
+          Accept: "application/json,text/plain,*/*",
+        },
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const json = JSON.parse(await resp.text())
+      const list = pickVisibleAkActivities(normalizeAkActivityData(json))
+      if (!list.length) throw new Error("empty_activity_data")
+      try {
+        await redis.set(AK_ACTIVITY_CACHE_KEY, JSON.stringify({ list }), { EX: AK_ACTIVITY_CACHE_TTL_SEC })
+      } catch {
+        try {
+          await redis.setEx(AK_ACTIVITY_CACHE_KEY, AK_ACTIVITY_CACHE_TTL_SEC, JSON.stringify({ list }))
+        } catch {}
+      }
+      return list
+    } catch (err) {
+      lastError = String(err?.message || err)
+    }
+  }
+
+  throw new Error(lastError || "activity_fetch_failed")
 }
 
 function extractUrlLike(text) {
@@ -251,6 +435,7 @@ export class fz extends plugin {
       priority: 5000,
       rule: [
         { reg: "^#?fz抽卡帮助$", fnc: "help" },
+        { reg: "^#?fz(?:活动|活动列表|活动查询)$", fnc: "activityList" },
         { reg: "^#?fz签到$", fnc: "sign" },
         { reg: "^#?fz(?:全部签到|全体签到|一键签到)$", fnc: "allSign", permission: "master" },
         { reg: "^#?fz(?:开启自动签到|自动签到开启)$", fnc: "autoSignOn" },
@@ -258,6 +443,8 @@ export class fz extends plugin {
         { reg: "^#?fz导入抽卡记录(?:\\s*.*)?$", fnc: "importLogs" },
         { reg: "^#?fz导出抽卡记录$", fnc: "exportLogs" },
         { reg: "^#?fz删除抽卡记录$", fnc: "deleteLogs" },
+        { reg: "^#?fz(?:抽卡分析|抽卡统计|寻访分析|寻访统计)(?:\\s*.*)?$", fnc: "analysis" },
+        { reg: "^#?fz(?:卡池分析|卡池统计)(?:\\s+.*)?$", fnc: "poolAnalysis" },
         { reg: "^#?fz(?:全量更新抽卡记录|重刷抽卡记录|重置抽卡记录|重拉抽卡记录)(?:\\s*.*)?$", fnc: "refreshAll" },
         { reg: "^#?fz更新抽卡记录(?:\\s*.*)?$", fnc: "refresh" },
         { reg: "^#?fz抽卡记录(?:\\s*.*)?$", fnc: "show" },
@@ -274,9 +461,12 @@ export class fz extends plugin {
     const e = this.e
     const lines = [
       `${GAME_TITLE} 抽卡帮助`,
+      `活动：${PREFIX}活动`,
       `更新：${PREFIX}更新抽卡记录<@用户>`,
       `全量：${PREFIX}全量更新抽卡记录<@用户>`,
       `查看：${PREFIX}抽卡记录<@用户>`,
+      `分析：${PREFIX}抽卡分析<@用户>`,
+      `卡池：${PREFIX}卡池分析 <卡池名><@用户>`,
       `导入：${PREFIX}导入抽卡记录<JSON文件>`,
       `导出：${PREFIX}导出抽卡记录`,
       `删除：${PREFIX}删除抽卡记录`,
@@ -403,6 +593,184 @@ export class fz extends plugin {
       return true
     }
     await e.reply(`${GAME_TITLE} 已关闭自动签到`, true)
+    return true
+  }
+
+  async activityList() {
+    const e = this.e
+
+    let list = []
+    try {
+      list = await getAkActivityData()
+    } catch (err) {
+      await e.reply(`${GAME_TITLE} 获取活动数据失败：${err?.message || err}`, true)
+      return true
+    }
+
+    const nowTs = Math.floor(Date.now() / 1000)
+    const threeDays = 3 * 24 * 3600
+    const ongoing = []
+    const ending = []
+    const upcoming = []
+
+    for (const item of list) {
+      if (item.startTime <= nowTs && item.endTime > nowTs) {
+        ongoing.push(item)
+        if (item.endTime - nowTs <= threeDays) ending.push(item)
+        continue
+      }
+      if (item.startTime > nowTs && item.startTime - nowTs <= threeDays) upcoming.push(item)
+    }
+
+    ongoing.sort((a, b) => a.endTime - b.endTime)
+    ending.sort((a, b) => a.endTime - b.endTime)
+    upcoming.sort((a, b) => a.startTime - b.startTime)
+
+    const lines = [
+      `${GAME_TITLE} 活动速览`,
+      `时间：${formatNow()}`,
+    ]
+
+    if (ongoing.length) {
+      lines.push("", "【进行中】")
+      for (const item of ongoing.slice(0, 8)) {
+        lines.push(`- ${item.name}`)
+        lines.push(`  结束：${formatRemain(item.endTime, nowTs)}（${formatTs(item.endTime)})`)
+      }
+    }
+
+    if (ending.length) {
+      lines.push("", "【3天内结束】")
+      for (const item of ending.slice(0, 6)) {
+        lines.push(`- ${item.name}：${formatRemain(item.endTime, nowTs)}`)
+      }
+    }
+
+    if (upcoming.length) {
+      lines.push("", "【3天内开启】")
+      for (const item of upcoming.slice(0, 6)) {
+        lines.push(`- ${item.name}`)
+        lines.push(`  开始：${formatRemain(item.startTime, nowTs)}（${formatTs(item.startTime)})`)
+      }
+    }
+
+    if (!ongoing.length && !upcoming.length) {
+      lines.push("", "当前没有进行中或 3 天内即将开始的公开活动")
+    }
+
+    await e.reply(lines.join("\n"), true)
+    return true
+  }
+
+  async analysis() {
+    const e = this.e
+    const targetUserId = getQueryUserId(e)
+    const res = await getFzGachaLogViewForUser(targetUserId)
+    if (!res.ok) {
+      await e.reply(res.message, true)
+      return true
+    }
+
+    const pools = Array.isArray(res.view?.gacha?.pools) ? res.view.gacha.pools : []
+    const list = Array.isArray(res.exportData?.list) ? res.exportData.list : []
+    const recentSix = list
+      .filter(item => safeInt(item?.rarity, -1) === 5)
+      .sort(sortRecordDesc)
+      .slice(0, 8)
+
+    const totalPulls = safeInt(res.view?.gacha?.stat?.totalNum, list.length)
+    const totalSix = safeInt(res.view?.gacha?.stat?.sixNum, recentSix.length)
+    const overallAvg = totalPulls > 0 && totalSix > 0 ? (totalPulls / totalSix).toFixed(1) : "-"
+
+    const lines = [
+      `${GAME_TITLE} 抽卡分析`,
+      `账号：${res.view?.face?.name || "博士"} UID:${res.uid || "-"}`,
+      `更新：${res.exportData?.info?.exportTimestamp ? formatTs(res.exportData.info.exportTimestamp) : "-"}`,
+      `总寻访：${totalPulls}  6星：${totalSix}  综合平均：${overallAvg}`,
+    ]
+
+    for (const pool of pools) {
+      const avgText = pool?.stats?.avgText && pool.stats.avgText !== "-" ? pool.stats.avgText : "-"
+      lines.push(`${pool.title}：寻访 ${safeInt(pool?.stats?.total)} / 6星 ${safeInt(pool?.stats?.six)} / 平均 ${avgText} / 垫抽 ${safeInt(pool?.pity)}`)
+    }
+
+    if (recentSix.length) {
+      lines.push("", "【最近 6 星】")
+      const costMap = buildTopCostMap(list)
+      for (const item of recentSix) {
+        const cost = Math.max(1, safeInt(costMap.get(buildRecordKey(item)), 1))
+        lines.push(`- ${formatMd(item.gachaTs)} ${item.charName || "未知干员"}［${item.poolName || "未知卡池"} / 第 ${cost} 抽］`)
+      }
+    }
+
+    await e.reply(lines.join("\n"), true)
+    return true
+  }
+
+  async poolAnalysis() {
+    const e = this.e
+    const targetUserId = getQueryUserId(e)
+    const text = getMessageText(e)
+    const keyword = text.replace(/^#?fz(?:卡池分析|卡池统计)\s*/i, "").trim()
+    if (!keyword) {
+      await e.reply(`${GAME_TITLE} 用法：${PREFIX}卡池分析 <卡池名>`, true)
+      return true
+    }
+
+    const res = await getFzGachaLogViewForUser(targetUserId)
+    if (!res.ok) {
+      await e.reply(res.message, true)
+      return true
+    }
+
+    const list = Array.isArray(res.exportData?.list) ? res.exportData.list : []
+    const poolMap = new Map()
+    for (const item of list) {
+      const poolName = String(item?.poolName || "").trim()
+      if (!poolName) continue
+      if (!poolMap.has(poolName)) poolMap.set(poolName, { poolName, items: [], latestTs: 0 })
+      const entry = poolMap.get(poolName)
+      entry.items.push(item)
+      const ts = safeInt(item?.gachaTs, 0)
+      if (ts > entry.latestTs) entry.latestTs = ts
+    }
+
+    const { current, candidates } = pickMatchedPool(poolMap, keyword)
+    if (!current) {
+      await e.reply(`${GAME_TITLE} 未找到匹配的卡池：${keyword}`, true)
+      return true
+    }
+
+    const items = current.items.slice().sort(sortRecordDesc)
+    const stats = buildSimpleStats(items)
+    const pity = getCurrentPity(items)
+    const costMap = buildTopCostMap(items)
+    const recentSix = items.filter(item => safeInt(item?.rarity, -1) === 5).slice(0, 8)
+    const avgText = stats.avg != null ? stats.avg.toFixed(1) : "-"
+
+    const lines = [
+      `${GAME_TITLE} 卡池分析`,
+      `账号：${res.view?.face?.name || "博士"} UID:${res.uid || "-"}`,
+      `卡池：${current.poolName}`,
+      `总寻访：${stats.total}  6星：${stats.six}  平均：${avgText}`,
+      `当前垫抽：${pity}`,
+    ]
+
+    if (candidates.length > 1) {
+      lines.push(`匹配说明：命中 ${candidates.length} 个候选，已按最近记录优先选择当前卡池`)
+    }
+
+    if (recentSix.length) {
+      lines.push("", "【本池最近 6 星】")
+      for (const item of recentSix) {
+        const cost = Math.max(1, safeInt(costMap.get(buildRecordKey(item)), 1))
+        lines.push(`- ${formatMd(item.gachaTs)} ${item.charName || "未知干员"}（第 ${cost} 抽）`)
+      }
+    } else {
+      lines.push("", "本池暂无 6 星记录")
+    }
+
+    await e.reply(lines.join("\n"), true)
     return true
   }
 

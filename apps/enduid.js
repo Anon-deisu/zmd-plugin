@@ -607,9 +607,11 @@ export class enduid extends plugin {
         desc: "森空岛功能（复用 #zmd 绑定）",
         items: [
           { name: "签到", cmd: `${fz}签到`, desc: "" },
+          { name: "活动", cmd: `${fz}活动`, desc: "查看进行中/近期活动" },
           { name: "自动签到", cmd: `${fz}开启自动签到 / ${fz}关闭自动签到`, desc: "" },
           { name: "全部签到", cmd: `${fz}全部签到`, desc: "执行全部签到任务", badge: "MASTER" },
           { name: "抽卡记录", cmd: `${fz}更新 / 全量 / 导入 / 导出 / 删除 / 查看抽卡记录`, desc: "限定/常驻/中坚聚合，支持 @用户" },
+          { name: "抽卡分析", cmd: `${fz}抽卡分析 / ${fz}卡池分析 <卡池名>`, desc: "查看整体统计与指定卡池分析" },
         ],
       },
       {
@@ -735,9 +737,11 @@ export class enduid extends plugin {
       ``,
       `【明日方舟】`,
       `- ${fz}签到`,
+      `- ${fz}活动`,
       `- ${fz}开启自动签到 / ${fz}关闭自动签到`,
       isMaster ? `- ${fz}全部签到（仅 master）` : "",
       `- ${fz}更新抽卡记录 / ${fz}全量更新抽卡记录 / ${fz}抽卡记录`,
+      `- ${fz}抽卡分析 / ${fz}卡池分析 <卡池名>`,
       `- ${fz}导入抽卡记录 / ${fz}导出抽卡记录 / ${fz}删除抽卡记录`,
       ``,
       `【其他】`,
