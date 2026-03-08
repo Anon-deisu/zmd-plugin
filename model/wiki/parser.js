@@ -222,6 +222,48 @@ function extractSectionSlice(html, heading, nextHeadings = []) {
   return source.slice(start, end)
 }
 
+function extractAnchorTexts(html) {
+  return [...String(html || "").matchAll(/<a[^>]*>([\s\S]*?)<\/a>/gi)]
+    .map(m => cleanTextBlock(stripTags(m[1] || "")))
+    .filter(Boolean)
+}
+
+function extractFirstImgUrl(html) {
+  const match = String(html || "").match(/<img[^>]*>/i)
+  if (!match?.[0]) return ""
+  return bestImgUrl(parseAttrs(match[0]))
+}
+
+function parseVersionTag(text) {
+  const m = String(text || "").match(/(\d+(?:\.\d+)+)/)
+  return m?.[1] || ""
+}
+
+function parseMonthDayRange(text, year) {
+  const s = cleanTextBlock(String(text || "")).replace(/\s+/g, " ")
+  const m = s.match(/(\d{1,2})\/(\d{1,2})\s*-\s*(?:(\d{1,2})\/(\d{1,2}))?/) 
+  if (!m) return { start_timestamp: 0, end_timestamp: 0, raw_range: s }
+
+  const startMonth = Number.parseInt(m[1], 10)
+  const startDay = Number.parseInt(m[2], 10)
+  const endMonth = m[3] ? Number.parseInt(m[3], 10) : 0
+  const endDay = m[4] ? Number.parseInt(m[4], 10) : 0
+  if (![startMonth, startDay].every(Number.isFinite)) return { start_timestamp: 0, end_timestamp: 0, raw_range: s }
+
+  const startTs = Math.floor(new Date(year, startMonth - 1, startDay, 0, 0, 0).getTime() / 1000)
+  let endTs = 0
+  if (Number.isFinite(endMonth) && Number.isFinite(endDay) && endMonth > 0 && endDay > 0) {
+    const endYear = endMonth < startMonth ? year + 1 : year
+    endTs = Math.floor(new Date(endYear, endMonth - 1, endDay, 23, 59, 59).getTime() / 1000)
+  }
+
+  return {
+    start_timestamp: startTs,
+    end_timestamp: endTs,
+    raw_range: s,
+  }
+}
+
 function takeLines(text, maxLines = 4) {
   return String(text || "")
     .split("\n")
@@ -338,6 +380,75 @@ function fillCharBannerTimes(banners) {
     charBanners[i].start_timestamp = prev.end_timestamp
     charBanners[i].end_timestamp = prev.end_timestamp + BANNER_CYCLE_SECONDS
   }
+}
+
+function parseActivityOverviewTable(tableHtml, { sectionLabel }) {
+  const rows = parseTableRows(tableHtml)
+  const list = []
+  let currentYear = 0
+
+  for (const row of rows) {
+    if (!row.length) continue
+    const firstText = String(row[0]?.text || "").trim()
+    const yearMatch = firstText.match(/(\d{4})年/)
+    if (yearMatch?.[1]) {
+      currentYear = Number.parseInt(yearMatch[1], 10) || currentYear
+      continue
+    }
+
+    if (!currentYear) continue
+    if (sectionLabel === "主题活动") {
+      if (row.length < 2 || firstText === "活动") continue
+      const title = extractAnchorTexts(row[0]?.html || "").at(-1) || firstText.replace(/^\d+(?:\.\d+)+\s*/, "")
+      const version = parseVersionTag(row[0]?.text || "") || parseVersionTag(row[1]?.text || "")
+      const range = parseMonthDayRange(row[1]?.text || "", currentYear)
+      if (!title || !range.start_timestamp) continue
+      list.push({
+        title,
+        section_label: sectionLabel,
+        version,
+        target_name: "",
+        cover_url: extractFirstImgUrl(row[row.length - 1]?.html || ""),
+        start_timestamp: range.start_timestamp,
+        end_timestamp: range.end_timestamp,
+        time_text: range.raw_range,
+      })
+      continue
+    }
+
+    if (sectionLabel === "叙事活动") {
+      if (row.length < 3 || firstText === "角色") continue
+      const targetName = extractAnchorTexts(row[0]?.html || "").at(-1) || firstText
+      const title = extractAnchorTexts(row[1]?.html || "").at(-1) || String(row[1]?.text || "").trim()
+      const version = parseVersionTag(row[2]?.text || "")
+      const range = parseMonthDayRange(row[2]?.text || "", currentYear)
+      if (!title || !range.start_timestamp) continue
+      list.push({
+        title,
+        section_label: sectionLabel,
+        version,
+        target_name: targetName,
+        cover_url: extractFirstImgUrl(row[row.length - 1]?.html || ""),
+        start_timestamp: range.start_timestamp,
+        end_timestamp: range.end_timestamp,
+        time_text: range.raw_range,
+      })
+    }
+  }
+
+  return list
+}
+
+export function parseActivityOverview(html) {
+  const source = String(html || "")
+  if (!source.includes("mw-parser-output")) return []
+
+  const themeTable = extractWikitableByHeading(source, "主题活动")
+  const storyTable = extractWikitableByHeading(source, "叙事活动")
+  return [
+    ...parseActivityOverviewTable(themeTable, { sectionLabel: "主题活动" }),
+    ...parseActivityOverviewTable(storyTable, { sectionLabel: "叙事活动" }),
+  ]
 }
 
 export function parseHomepage(html) {

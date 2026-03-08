@@ -11,11 +11,12 @@ import path from "node:path"
 
 import fetch from "node-fetch"
 
-import { parseCharWiki, parseHomepage, parseWeaponWiki } from "./parser.js"
+import { parseActivityOverview, parseCharWiki, parseHomepage, parseWeaponWiki } from "./parser.js"
 import {
   CHAR_CACHE_DIR,
   DETAIL_EXPIRE_SECONDS,
   LIST_CACHE_FILE,
+  WIKI_ACTIVITY_OVERVIEW_URL,
   WEAPON_CACHE_DIR,
   WIKI_BASE_URL,
   WIKI_HOME_URL,
@@ -87,6 +88,10 @@ function isListStale(data) {
   return now.getTime() >= boundary.getTime()
 }
 
+function needsActivityOverview(data) {
+  return !Array.isArray(data?.activities)
+}
+
 // 串行化网络抓取：更“礼貌”，也降低触发反爬的概率。
 let _lock = Promise.resolve()
 function withFetchLock(fn) {
@@ -134,12 +139,20 @@ async function loadListData() {
   }
 }
 
-async function refreshList() {
+async function refreshList(prevData = null) {
   const html = await fetchPage(WIKI_HOME_URL)
   if (!html) return null
 
   const data = parseHomepage(html)
   if (!data) return null
+
+  const activityHtml = await fetchPage(WIKI_ACTIVITY_OVERVIEW_URL)
+  const overviewActivities = activityHtml ? parseActivityOverview(activityHtml) : []
+  data.activities = overviewActivities.length
+    ? overviewActivities
+    : Array.isArray(prevData?.activities)
+        ? prevData.activities
+        : []
 
   data.fetch_time = Math.floor(Date.now() / 1000)
   await saveJson(LIST_JSON_PATH, data)
@@ -148,8 +161,8 @@ async function refreshList() {
 
 export async function ensureListData() {
   const cached = await loadListData()
-  if (!cached || isListStale(cached)) {
-    const refreshed = await refreshList()
+  if (!cached || isListStale(cached) || needsActivityOverview(cached)) {
+    const refreshed = await refreshList(cached)
     return refreshed || cached
   }
   return cached

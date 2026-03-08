@@ -8,6 +8,8 @@ import plugin from "../../../lib/plugins/plugin.js"
 
 import cfg from "../model/config.js"
 import { resolveAliasEntry } from "../model/alias.js"
+import { getActivityTargetIconLocalMap, updateActivityTargetIconCache } from "../model/gachaIconCache.js"
+import { render as renderImg } from "../model/render.js"
 import { patchTempSessionReply } from "../model/reply.js"
 import { ensureListData, getCharWiki, getWeaponWiki } from "../model/wiki/fetch.js"
 import { resolveWeaponAlias } from "../model/wiki/weaponAlias.js"
@@ -16,6 +18,7 @@ const GAME_TITLE = "[终末地]"
 const KEY_ACTIVITY_SUBS = "Yz:EndUID:Activity:Subs"
 const KEY_ACTIVITY_SEEN_PREFIX = "Yz:EndUID:Activity:Seen:"
 const DAY_SEC = 86400
+const WEEK_LABELS = ["一", "二", "三", "四", "五", "六", "日"]
 
 function safeJsonParse(text, fallback) {
   try {
@@ -90,17 +93,46 @@ function buildActivityId(item, index) {
 }
 
 function normalizeActivityEntries(data) {
-  const list = Array.isArray(data?.gacha) ? data.gacha : []
-  return list
-    .map((item, index) => ({
+  const gachaList = Array.isArray(data?.gacha) ? data.gacha : []
+  const regularList = Array.isArray(data?.activities) ? data.activities : []
+  return [
+    ...gachaList.map((item, index) => ({
       id: buildActivityId(item, index),
       title: String(item?.banner_name || "").trim() || "（未命名卡池）",
       typeLabel: item?.banner_type === "weapon" ? "武器池" : "角色池",
       targetName: String(item?.target_name || "").trim(),
+      targetIconUrl: String(item?.target_icon_url || "").trim(),
+      bannerUrl: String(item?.target_icon_url || "").trim(),
       relatedEvents: Array.isArray(item?.events) ? item.events.filter(Boolean).map(x => String(x).trim()).filter(Boolean) : [],
       startTs: Number(item?.start_timestamp) || 0,
       endTs: Number(item?.end_timestamp) || 0,
-    }))
+      calendarType: item?.banner_type === "weapon" ? "weapon" : "character",
+      source: "gacha",
+      versionLabel: "",
+    })),
+    ...regularList.map((item, index) => ({
+      id: [
+        "activity",
+        String(item?.section_label || ""),
+        String(item?.title || ""),
+        Number(item?.start_timestamp) || 0,
+        Number(item?.end_timestamp) || 0,
+        index,
+      ].join(":"),
+      title: String(item?.title || "").trim() || "（未命名活动）",
+      typeLabel: String(item?.section_label || "常规活动").trim() || "常规活动",
+      targetName: String(item?.target_name || "").trim(),
+      targetIconUrl: "",
+      bannerUrl: String(item?.cover_url || "").trim(),
+      relatedEvents: [],
+      startTs: Number(item?.start_timestamp) || 0,
+      endTs: Number(item?.end_timestamp) || 0,
+      calendarType: "activity",
+      source: "activity",
+      versionLabel: String(item?.version || "").trim(),
+      rawTimeText: String(item?.time_text || "").trim(),
+    })),
+  ]
     .filter(item => item.title)
     .sort((a, b) => {
       const startDiff = (a.startTs || Number.MAX_SAFE_INTEGER) - (b.startTs || Number.MAX_SAFE_INTEGER)
@@ -116,12 +148,210 @@ function buildActivityCardLines(item, nowTs) {
   return [
     `${item.title}（${item.typeLabel} / ${status}）`,
     item.targetName ? `目标：${item.targetName}` : "",
+    item.versionLabel ? `版本：${item.versionLabel}` : "",
     item.relatedEvents.length ? `关联活动：${joinList(item.relatedEvents, { sep: "；", maxLen: 800 })}` : "",
     `时间：${formatTime(item.startTs)} ~ ${formatTime(item.endTs)}`,
     isUpcoming
       ? `开启：${formatRemainText(item.startTs, { nowTs, endedText: "已开启" })}`
       : `结束：${formatRemainText(item.endTs, { nowTs, endedText: "已结束" })}`,
   ].filter(Boolean)
+}
+
+function formatShortTime(tsSec) {
+  const t = Number(tsSec) || 0
+  if (t <= 0) return "-"
+  const d = new Date(t * 1000)
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  const hh = String(d.getHours()).padStart(2, "0")
+  const mi = String(d.getMinutes()).padStart(2, "0")
+  return `${mm}.${dd} ${hh}:${mi}`
+}
+
+function startOfDayTs(tsSec = Math.floor(Date.now() / 1000)) {
+  const d = new Date((Number(tsSec) || 0) * 1000)
+  d.setHours(0, 0, 0, 0)
+  return Math.floor(d.getTime() / 1000)
+}
+
+function toPct(value, total) {
+  const num = Number(value) || 0
+  const base = Number(total) || 0
+  if (base <= 0) return 0
+  return Number(((num / base) * 100).toFixed(3))
+}
+
+function getCalendarWindowConfig() {
+  const configuredDays = Number(cfg.activity?.listDays) || 21
+  return {
+    daysBack: 2,
+    daysAhead: Math.max(6, Math.min(10, configuredDays)),
+  }
+}
+
+function buildCalendarDateGroups({ nowTs, daysBack, daysAhead }) {
+  const todayStart = startOfDayTs(nowTs)
+  const startTs = todayStart - daysBack * DAY_SEC
+  const totalDays = daysBack + daysAhead + 1
+  const groups = []
+
+  for (let i = 0; i < totalDays; i += 1) {
+    const ts = startTs + i * DAY_SEC
+    const d = new Date(ts * 1000)
+    const month = d.getMonth() + 1
+    const weekIdx = (d.getDay() + 6) % 7
+    const last = groups[groups.length - 1]
+    const group = last && last.month === month
+      ? last
+      : (() => {
+          const next = { month, date: [], week: [], today: [] }
+          groups.push(next)
+          return next
+        })()
+
+    group.date.push(d.getDate())
+    group.week.push(weekIdx)
+    group.today.push(ts === todayStart)
+  }
+
+  return {
+    startTs,
+    endTs: startTs + totalDays * DAY_SEC,
+    groups,
+    totalDays,
+  }
+}
+
+function buildCalendarItems(entries, { windowStartTs, windowEndTs, nowTs, iconPathById = {} }) {
+  const totalRange = Math.max(1, windowEndTs - windowStartTs)
+  return (Array.isArray(entries) ? entries : [])
+    .filter(item => {
+      const startTs = Number(item?.startTs) || 0
+      const endTs = Number(item?.endTs) || 0 || windowEndTs
+      return endTs > windowStartTs && startTs < windowEndTs
+    })
+    .map(item => {
+      const startTs = Number(item?.startTs) || 0
+      const endTs = Number(item?.endTs) || windowEndTs
+      const clippedStartTs = Math.max(windowStartTs, startTs)
+      const clippedEndTs = Math.min(windowEndTs, endTs)
+      const leftPct = toPct(clippedStartTs - windowStartTs, totalRange)
+      const widthPct = Number(Math.max(1.4, toPct(Math.max(1, clippedEndTs - clippedStartTs), totalRange)).toFixed(3))
+      const isUpcoming = startTs > nowTs
+      const hasExplicitEnd = Number(item?.endTs) > 0
+      const isEndingSoon = hasExplicitEnd && !isUpcoming && endTs - nowTs <= 3 * DAY_SEC
+      const type = String(item?.calendarType || "").trim() || (item?.typeLabel === "武器池" ? "weapon" : "character")
+      const remainText = isUpcoming
+        ? `${formatRemainText(startTs, { nowTs, endedText: "已开启" })}开始`
+        : hasExplicitEnd
+            ? `${formatRemainText(endTs, { nowTs, endedText: "已结束" })}结束`
+            : "结束时间待补"
+      const brief = item?.targetName
+        ? `${item.targetName} · ${remainText}`
+        : item?.versionLabel
+            ? `版本 ${item.versionLabel} · ${remainText}`
+        : Array.isArray(item?.relatedEvents) && item.relatedEvents.length
+            ? `${joinList(item.relatedEvents, { sep: " / ", maxLen: 28 })} · ${remainText}`
+            : remainText
+      const localIconPath = type === "activity" ? "" : String(iconPathById[item?.id] || "").trim()
+      const remoteIconUrl = type === "activity" ? "" : String(item?.targetIconUrl || "").trim()
+      const bannerUrl = String(item?.bannerUrl || remoteIconUrl || "").trim()
+
+      return {
+        id: String(item?.id || ""),
+        type,
+        status: isUpcoming ? "upcoming" : isEndingSoon ? "ending" : "ongoing",
+        statusLabel: isUpcoming ? "即将开启" : isEndingSoon ? "即将结束" : "进行中",
+        typeLabel: String(item?.typeLabel || "活动").trim() || "活动",
+        title: String(item?.title || "（未命名活动）"),
+        label: `${formatShortTime(startTs)} - ${hasExplicitEnd ? formatShortTime(endTs) : "待补"}`,
+        subLabel: brief,
+        remainText,
+        targetName: String(item?.targetName || "").trim(),
+        versionLabel: String(item?.versionLabel || "").trim(),
+        source: String(item?.source || "").trim(),
+        clippedStartTs,
+        clippedEndTs,
+        left: leftPct,
+        width: widthPct,
+        style: `left:${leftPct}%;width:${widthPct}%;`,
+        smallMode: widthPct < 26,
+        icon: type === "weapon" ? (localIconPath || remoteIconUrl) : "",
+        face: type === "character" ? (localIconPath || remoteIconUrl) : "",
+        bannerUrl,
+        localIconPath,
+        remoteIconUrl,
+        useRemoteIcon: !localIconPath && !!remoteIconUrl,
+      }
+    })
+    .sort((a, b) => {
+      const startDiff = a.clippedStartTs - b.clippedStartTs
+      if (startDiff !== 0) return startDiff
+      return b.clippedEndTs - a.clippedEndTs
+    })
+}
+
+function buildCalendarLanes(items) {
+  const lanes = []
+  for (const item of (Array.isArray(items) ? items : [])) {
+    let placed = false
+    for (const lane of lanes) {
+      const last = lane[lane.length - 1]
+      if ((last?.clippedEndTs || 0) <= item.clippedStartTs) {
+        lane.push(item)
+        placed = true
+        break
+      }
+    }
+    if (!placed) lanes.push([item])
+  }
+  return lanes
+}
+
+async function buildCalendarRenderData({ data, list, prefix }) {
+  const nowTs = Math.floor(Date.now() / 1000)
+  const { daysBack, daysAhead } = getCalendarWindowConfig()
+  const { startTs: windowStartTs, endTs: windowEndTs, groups: dateGroups, totalDays } = buildCalendarDateGroups({
+    nowTs,
+    daysBack,
+    daysAhead,
+  })
+  const items = buildCalendarItems(list, {
+    windowStartTs,
+    windowEndTs,
+    nowTs,
+    iconPathById: getActivityTargetIconLocalMap(list),
+  })
+  const lanes = buildCalendarLanes(items)
+  const totalRange = Math.max(1, windowEndTs - windowStartTs)
+  const summary = {
+    total: items.length,
+    active: items.filter(item => item.status !== "upcoming").length,
+    upcoming: items.filter(item => item.status === "upcoming").length,
+    ending: items.filter(item => item.status === "ending").length,
+    regular: items.filter(item => item.type === "activity").length,
+    gacha: items.filter(item => item.type === "character" || item.type === "weapon").length,
+  }
+
+  return {
+    title: `${GAME_TITLE} 活动日历`,
+    subtitle: `最近 ${daysBack} 天 / 未来 ${daysAhead} 天`,
+    updateTime: formatTime(data?.fetch_time),
+    nowTime: formatTime(nowTs),
+    dateList: dateGroups,
+    weekName: WEEK_LABELS,
+    lanes,
+    flatList: items,
+    summary,
+    dayCount: totalDays,
+    nowLeft: toPct(Math.max(0, Math.min(totalRange, nowTs - windowStartTs)), totalRange),
+    notes: [
+      `订阅提醒：${prefix}订阅活动提醒 <小时>`,
+      `取消提醒：${prefix}取消订阅活动提醒`,
+      `查看状态：${prefix}活动提醒列表`,
+    ],
+    emptyHint: `${GAME_TITLE} 当前没有处于进行中或未来 ${daysAhead} 天内可见的活动`,
+  }
 }
 
 function activitySeenKey(sub) {
@@ -398,6 +628,7 @@ export class wiki extends plugin {
 
   async calendar() {
     const e = this.e
+    const msg = String(e.msg || "").trim()
     const data = await ensureListData()
     const list = normalizeActivityEntries(data)
     if (!list.length) {
@@ -406,15 +637,39 @@ export class wiki extends plugin {
     }
 
     const nowTs = Math.floor(Date.now() / 1000)
-    const listDays = Math.max(1, Number(cfg.activity?.listDays) || 21)
-    const upcomingLimitTs = nowTs + listDays * DAY_SEC
+    const { daysAhead } = getCalendarWindowConfig()
+    const upcomingLimitTs = nowTs + daysAhead * DAY_SEC
     const ongoing = list.filter(item => item.startTs > 0 && item.startTs <= nowTs && (!item.endTs || item.endTs > nowTs))
     const upcoming = list.filter(item => item.startTs > nowTs && item.startTs <= upcomingLimitTs)
+
+    // 图片缓存改为后台补全，避免网络抖动阻塞活动命令本身。
+    updateActivityTargetIconCache(list, { maxDownloads: 8 }).catch(err => {
+      logger?.warn?.(`${GAME_TITLE} 活动目标图缓存补全失败：${err?.message || err}`)
+    })
+
+    try {
+      const img = await renderImg(
+        "enduid/calendar",
+        {
+          ...(await buildCalendarRenderData({ data, list, prefix: this.getCmdPrefixHint() })),
+          displayMode: /^#?(?:终末地|zmd)活动$/i.test(msg) ? "list" : "calendar",
+          imgType: "png",
+          copyright: `${GAME_TITLE}zmd-plugin & yuyu-bot`,
+        },
+        { scale: 1.1, quality: 100 },
+      )
+      if (img) {
+        await e.reply(img, true)
+        return true
+      }
+    } catch (err) {
+      logger.error(`${GAME_TITLE} 活动日历图片渲染失败：${err?.message || err}`)
+    }
 
     const summary = [
       `${GAME_TITLE} 活动日历（更新：${formatTime(data.fetch_time)}）`,
       `进行中：${ongoing.length} 个`,
-      `未来 ${listDays} 天：${upcoming.length} 个`,
+      `未来 ${daysAhead} 天：${upcoming.length} 个`,
       `提醒：${this.getCmdPrefixHint()}订阅活动提醒`,
     ].join("\n")
 
@@ -432,7 +687,7 @@ export class wiki extends plugin {
     }
 
     if (!ongoing.length && !upcoming.length) {
-      forward.push([`${GAME_TITLE} 当前没有处于进行中或未来 ${listDays} 天内可见的卡池活动`])
+      forward.push([`${GAME_TITLE} 当前没有处于进行中或未来 ${daysAhead} 天内可见的活动`])
     }
 
     await e.reply(common.makeForwardMsg(e, forward, "终末地-活动日历"))

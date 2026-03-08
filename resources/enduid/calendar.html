@@ -1,0 +1,168 @@
+{{extend defaultLayout}}
+<!--
+  enduid/calendar
+
+  终末地活动日历专用模板。
+  改为工业面板风：顶部概览 + 中部时间标尺 + 下方模块卡片。
+-->
+
+{{block 'css'}}
+<link rel="stylesheet" href="{{_res_path}}enduid/css/calendar.css" />
+{{/block}}
+
+{{block 'main'}}
+<div class="calendar-shell">
+  <section class="board-head">
+    <div class="board-title">
+      <span class="board-kicker">ENDFIELD OPS BOARD</span>
+      <h1>{{title}}</h1>
+      <p>{{subtitle}} · 更新于 {{updateTime}}</p>
+    </div>
+    <div class="board-stats">
+      <div class="stat-card accent-cyan">
+        <strong>{{summary.total}}</strong>
+        <span>窗口活动</span>
+      </div>
+      <div class="stat-card accent-orange">
+        <strong>{{summary.active}}</strong>
+        <span>进行中</span>
+      </div>
+      <div class="stat-card accent-blue">
+        <strong>{{summary.upcoming}}</strong>
+        <span>待启动</span>
+      </div>
+      <div class="stat-card accent-steel">
+        <strong>{{summary.regular}}</strong>
+        <span>常规活动</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="board-frame for-calendar-mode">
+    <div class="calendar-ruler" style="--day-count: {{dayCount}};">
+      <table class="ruler-table" border-collapse="collapse">
+        <tr class="tr ruler-months">
+          {{each dateList d}}
+          <td colspan="{{d.date.length}}" class="td month">{{d.month}}月</td>
+          {{/each}}
+        </tr>
+        <tr class="tr ruler-days">
+          {{each dateList d}}{{each d.date dn di}}
+          <td class="td date {{d.today[di] ? 'current-date' : ''}}">
+            <span class="date-num">{{dn}}</span>
+            <span class="date-week">周{{weekName[d.week[di]]}}</span>
+          </td>
+          {{/each}}{{/each}}
+        </tr>
+      </table>
+      <div class="now-pin" style="left:{{nowLeft}}%">
+        <span class="pin-label">NOW</span>
+      </div>
+    </div>
+
+    <div class="timeline-board" style="--day-count: {{dayCount}};">
+      {{if lanes && lanes.length}}
+        {{each lanes lane}}
+        <div class="timeline-lane">
+          {{each lane li idx}}
+          <article
+            class="timeline-card type-{{li.type}} status-{{li.status}} {{li.smallMode ? 'compact-card' : ''}}"
+            style="{{li.style}}"
+            data-id="{{li.id}}"
+            data-type="{{li.type}}">
+            <div class="card-accent"></div>
+            <div class="card-body">
+              <div class="card-chips">
+                <span class="chip chip-type">{{li.typeLabel}}</span>
+                <span class="chip chip-status">{{li.statusLabel}}</span>
+              </div>
+              <strong>{{li.title}}</strong>
+              <span class="card-time">{{li.label}}</span>
+              {{if li.subLabel}}<span class="card-sub">{{li.subLabel}}</span>{{/if}}
+            </div>
+            <div class="card-media">
+              {{if li.type === "activity" && li.bannerUrl}}
+              <div class="media-banner" style="background-image:url('{{li.bannerUrl}}')"></div>
+              {{else if li.type === "character"}}
+                {{if li.localIconPath}}
+                <img src="{{_res_path}}{{li.localIconPath}}" class="media-portrait" />
+                {{else if li.face}}
+                <img src="{{li.face}}" class="media-portrait" />
+                {{else if li.bannerUrl}}
+                <div class="media-banner" style="background-image:url('{{li.bannerUrl}}')"></div>
+                {{/if}}
+              {{else if li.type === "weapon"}}
+                {{if li.localIconPath}}
+                <img src="{{_res_path}}{{li.localIconPath}}" class="media-icon" />
+                {{else if li.icon}}
+                <img src="{{li.icon}}" class="media-icon" />
+                {{else if li.bannerUrl}}
+                <div class="media-banner" style="background-image:url('{{li.bannerUrl}}')"></div>
+                {{/if}}
+              {{/if}}
+            </div>
+          </article>
+          {{/each}}
+        </div>
+        {{/each}}
+      {{else}}
+      <div class="empty-box">{{emptyHint}}</div>
+      {{/if}}
+    </div>
+  </section>
+
+  <section class="board-frame for-list-mode">
+    <div class="list-head">
+      <span>活动列表</span>
+      <span class="list-now">当前时间：{{nowTime}}</span>
+    </div>
+    <div class="list-board">
+      {{if flatList && flatList.length}}
+        {{each flatList li}}
+        <article class="list-card type-{{li.type}} status-{{li.status}}" data-id="{{li.id}}">
+          <div class="list-copy">
+            <div class="card-chips">
+              <span class="chip chip-type">{{li.typeLabel}}</span>
+              <span class="chip chip-status">{{li.statusLabel}}</span>
+            </div>
+            <strong>{{li.title}}</strong>
+            <span class="card-time">{{li.label}}</span>
+            {{if li.subLabel}}<span class="card-sub">{{li.subLabel}}</span>{{/if}}
+          </div>
+          <div class="list-media">
+            {{if li.type === "activity" && li.bannerUrl}}
+            <div class="media-banner" style="background-image:url('{{li.bannerUrl}}')"></div>
+            {{else if li.type === "character"}}
+              {{if li.localIconPath}}
+              <img src="{{_res_path}}{{li.localIconPath}}" class="media-portrait" />
+              {{else if li.face}}
+              <img src="{{li.face}}" class="media-portrait" />
+              {{/if}}
+            {{else if li.type === "weapon"}}
+              {{if li.localIconPath}}
+              <img src="{{_res_path}}{{li.localIconPath}}" class="media-icon" />
+              {{else if li.icon}}
+              <img src="{{li.icon}}" class="media-icon" />
+              {{/if}}
+            {{/if}}
+          </div>
+        </article>
+        {{/each}}
+      {{else}}
+      <div class="empty-box">{{emptyHint}}</div>
+      {{/if}}
+    </div>
+  </section>
+
+  <section class="board-foot">
+    <div class="board-now">系统时钟：{{nowTime}}</div>
+    {{if notes && notes.length}}
+    <div class="board-notes">
+      {{each notes n}}
+      <span class="note-pill">{{n}}</span>
+      {{/each}}
+    </div>
+    {{/if}}
+  </section>
+</div>
+{{/block}}

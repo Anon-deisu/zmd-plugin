@@ -10,6 +10,15 @@ import { ensureListData } from "./wiki/fetch.js"
 const GACHA_DATA_DIR = path.join(PLUGIN_DATA_DIR, "gachalog")
 const LEGACY_GACHA_DATA_DIR = path.join(LEGACY_PLUGIN_DATA_DIR, "gachalog")
 const WEAPON_ICON_DIR = path.join(PLUGIN_RESOURCES_DIR, "endfield", "itemiconbig")
+const CHAR_ICON_DIR = path.join(PLUGIN_RESOURCES_DIR, "endfield", "charicon")
+
+function getActivityIconRelPath(rawId) {
+  const fileBase = sanitizeFileBase(rawId)
+  if (!fileBase) return { fileBase: "", relPath: "", filePath: "" }
+  const relPath = `endfield/charicon/activity_${fileBase}.png`
+  const filePath = path.join(CHAR_ICON_DIR, `activity_${fileBase}.png`)
+  return { fileBase, relPath, filePath }
+}
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -242,4 +251,81 @@ export async function updateWeaponIconCacheFromWiki({ roleIds = [], force = fals
     failed: failed.slice(0, 50),
     dir: WEAPON_ICON_DIR,
   }
+}
+
+/**
+ * Cache activity target icons parsed from wiki homepage.
+ *
+ * Output:
+ * - resources/endfield/charicon/activity_<activityId>.png
+ */
+export async function updateActivityTargetIconCache(entries = [], { force = false, maxDownloads = 50 } = {}) {
+  const list = Array.isArray(entries) ? entries : []
+  await fs.mkdir(CHAR_ICON_DIR, { recursive: true })
+
+  const iconPathById = {}
+  const jobs = []
+  let existed = 0
+
+  for (const item of list) {
+    const rawId = String(item?.id || item?.target_name || item?.banner_name || "").trim()
+    const iconUrl = String(item?.target_icon_url || item?.targetIconUrl || "").trim()
+    const { fileBase, relPath, filePath } = getActivityIconRelPath(rawId)
+    if (!rawId || !fileBase || !iconUrl) continue
+
+    if (!force && fsSync.existsSync(filePath)) {
+      iconPathById[rawId] = relPath
+      existed += 1
+      continue
+    }
+
+    jobs.push({ rawId, iconUrl, filePath, relPath })
+  }
+
+  const limitedJobs = jobs.slice(0, Math.max(0, Number(maxDownloads) || 0))
+  let downloaded = 0
+  const failed = []
+
+  await runPool(
+    limitedJobs,
+    async job => {
+      try {
+        const buf = await downloadPng(job.iconUrl)
+        if (!buf) throw new Error("download_failed")
+        await fs.writeFile(job.filePath, buf)
+        iconPathById[job.rawId] = job.relPath
+        downloaded += 1
+        await sleep(50)
+      } catch {
+        failed.push(job.rawId)
+      }
+    },
+    { concurrency: 3 },
+  )
+
+  return {
+    ok: true,
+    planned: jobs.length,
+    existed,
+    downloaded,
+    skippedByLimit: Math.max(0, jobs.length - limitedJobs.length),
+    failed: failed.slice(0, 50),
+    iconPathById,
+    dir: CHAR_ICON_DIR,
+  }
+}
+
+export function getActivityTargetIconLocalMap(entries = []) {
+  const list = Array.isArray(entries) ? entries : []
+  const iconPathById = {}
+
+  for (const item of list) {
+    const rawId = String(item?.id || item?.target_name || item?.banner_name || "").trim()
+    if (!rawId) continue
+    const { relPath, filePath } = getActivityIconRelPath(rawId)
+    if (!relPath || !filePath) continue
+    if (fsSync.existsSync(filePath)) iconPathById[rawId] = relPath
+  }
+
+  return iconPathById
 }
