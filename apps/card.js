@@ -92,6 +92,23 @@ function findWikiCharacterEntry(listData, names = []) {
   return null
 }
 
+function findExactWikiCharacterEntry(listData, names = []) {
+  const groups = listData?.characters && typeof listData.characters === "object" ? listData.characters : {}
+  const entries = Object.values(groups).flatMap(list => (Array.isArray(list) ? list : []))
+  const keys = Array.from(new Set((Array.isArray(names) ? names : []).map(normalizePanelKey).filter(Boolean)))
+  if (!entries.length || !keys.length) return null
+
+  for (const key of keys) {
+    const exact = entries.find(item => {
+      const candidates = [item?.name, item?.id, item?.template_id].map(normalizePanelKey).filter(Boolean)
+      return candidates.includes(key)
+    })
+    if (exact) return exact
+  }
+
+  return null
+}
+
 function deriveWeaponTypeText(charView) {
   const raw = String(charView?.weapon?.rawName || "").trim().toLowerCase()
   if (!raw) return "-"
@@ -359,15 +376,31 @@ export class card extends plugin {
       resolved = await resolveAliasEntry(query)
     } catch {}
 
-    // For "#xx面板" shorthand, only trigger when xx is an exact Endfield alias/id.
-    // If it doesn't match, stay silent to avoid interfering with other plugins.
-    if (isDirectPanel && !isExactResolvedAlias(resolved, query)) return false
+    let activeAccount = null
+    try {
+      const active = await getActiveAccount(uid)
+      activeAccount = active?.account || null
+    } catch {}
+
+    let directWikiChar = null
+    if (isDirectPanel) {
+      try {
+        const listData = await ensureListData()
+        directWikiChar = findExactWikiCharacterEntry(listData, [query])
+      } catch {}
+    }
+
+    // For "#xx面板" shorthand, only trigger when xx is an exact Endfield target.
+    // If the caller is not bound, require the raw query itself to be an exact wiki name/id,
+    // so unrelated character aliases from other plugins won't get intercepted here.
+    if (isDirectPanel && !isExactResolvedAlias(resolved, query) && !directWikiChar) return false
+    if (isDirectPanel && !activeAccount?.uid && !directWikiChar) return false
     const resolvedId = String(resolved?.entry?.id || "").trim()
     const resolvedName = String(resolved?.entry?.name || resolved?.key || "").trim()
 
     // UID-only binding: use Friend API to render panel without Skland login.
     try {
-      const { account } = await getActiveAccount(uid)
+      const account = activeAccount
       if (account?.uidOnly && account?.uid && !account?.cred) {
         const rt = getFriendApiRuntimeConfig()
         const friendEnabled = rt.enabled && !!rt.baseUrl
