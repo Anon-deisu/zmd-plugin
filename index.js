@@ -14,6 +14,12 @@ const __dirname = path.dirname(__filename)
 const appsDir = path.join(__dirname, "apps")
 
 const files = fs.readdirSync(appsDir).filter(file => file.endsWith(".js"))
+const startTime = Date.now()
+let successCount = 0
+let failureCount = 0
+
+logger.info("----------------------")
+logger.info("zmd-plugin 正在加载中...")
 
 // 逐个动态导入：某个 app 报错时不影响其它模块加载。
 let ret = []
@@ -26,9 +32,20 @@ for (let i in files) {
   if (ret[i].status !== "fulfilled") {
     logger.error(`载入插件错误：${logger.red(`zmd-plugin/${name}`)}`)
     logger.error(ret[i].reason)
+    failureCount += 1
     continue
   }
   apps[name] = ret[i].value[Object.keys(ret[i].value)[0]]
+  successCount += 1
 }
+
+const elapsedTime = Date.now() - startTime
+
+logger.info("----------------------")
+logger.info(logger.green("zmd-plugin 载入完成"))
+logger.info(`成功加载：${logger.green(successCount)} 个`)
+logger.info(`加载失败：${logger.red(failureCount)} 个`)
+logger.info(`总耗时：${logger.yellow(elapsedTime)} 毫秒`)
+logger.info("----------------------")
 
 export { apps }
