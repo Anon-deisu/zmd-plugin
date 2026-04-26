@@ -7,7 +7,6 @@
 -->
 
 {{set placeholder = "———"}}
-{{set charIconBase = _res_path + "enduid/texture2d/"}}
 
 {{block 'css'}}
 <link rel="stylesheet" type="text/css" href="{{_res_path}}skin/character/profile-detail.css"/>
@@ -283,15 +282,15 @@
 
       <div class="enduid-tags">
         <span class="enduid-tag">
-          <img class="enduid-tag-icon" src="{{charIconBase + profession + '.png'}}" onerror="this.remove()"/>
+          {{if professionIcon}}<img class="enduid-tag-icon" src="{{_res_path}}{{professionIcon}}"/>{{/if}}
           <span class="enduid-tag-text">{{profession}}</span>
         </span>
         <span class="enduid-tag">
-          <img class="enduid-tag-icon" src="{{charIconBase + property + '.png'}}" onerror="this.remove()"/>
+          {{if propertyIcon}}<img class="enduid-tag-icon" src="{{_res_path}}{{propertyIcon}}"/>{{/if}}
           <span class="enduid-tag-text">{{property}}</span>
         </span>
         <span class="enduid-tag">
-          <img class="enduid-tag-icon" src="{{charIconBase + weaponType + '.png'}}" onerror="this.remove()"/>
+          {{if weaponTypeIcon}}<img class="enduid-tag-icon" src="{{_res_path}}{{weaponTypeIcon}}"/>{{/if}}
           <span class="enduid-tag-text">{{weaponType}}</span>
         </span>
         {{each charTags tag}}

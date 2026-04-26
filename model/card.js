@@ -62,6 +62,91 @@ async function loadJson(filePath) {
   }
 }
 
+function normalizeLookupKey(text) {
+  return String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^0-9a-z\u4e00-\u9fff]+/gi, "")
+}
+
+function matchCharFromCache(chars, { name = "", charId = "" } = {}) {
+  const list = Array.isArray(chars) ? chars : []
+  const id = String(charId || "").trim()
+  const q = normalizeLookupKey(name)
+
+  if (id) {
+    const exactById = list.find(c => String(c?.charData?.id || c?.id || "").trim() === id)
+    if (exactById) return exactById
+  }
+
+  if (!q) return null
+
+  const exact = list.find(c => normalizeLookupKey(c?.charData?.name || "") === q)
+  if (exact) return exact
+
+  const fuzzy = list.find(c => {
+    const n = normalizeLookupKey(c?.charData?.name || "")
+    return n && (n.includes(q) || q.includes(n))
+  })
+  if (fuzzy) return fuzzy
+
+  return null
+}
+
+export async function findLocalCardCharByRoleId(roleId, { name = "", charId = "" } = {}) {
+  const rid = String(roleId || "").trim()
+  if (!rid) return null
+
+  const suffix = `_${sanitizeFilename(rid)}.json`
+  const candidates = []
+  const seen = new Set()
+
+  for (const dir of [FILE_DATA_DIR, FILE_DATA_DIR_LEGACY]) {
+    if (!fsSync.existsSync(dir)) continue
+    let files = []
+    try {
+      files = fsSync.readdirSync(dir)
+    } catch {
+      continue
+    }
+
+    for (const file of files) {
+      if (!String(file || "").endsWith(suffix)) continue
+      const filePath = path.join(dir, file)
+      if (seen.has(filePath)) continue
+      seen.add(filePath)
+      candidates.push(filePath)
+    }
+  }
+
+  if (!candidates.length) return null
+
+  let best = null
+  for (const filePath of candidates) {
+    const local = await loadJson(filePath)
+    const detail = local?.res?.data?.detail
+    if (!detail || typeof detail !== "object") continue
+
+    const base = detail.base && typeof detail.base === "object" ? detail.base : {}
+    if (String(base.roleId || "").trim() !== rid) continue
+
+    const chars = Array.isArray(detail.chars) ? detail.chars : []
+    const char = matchCharFromCache(chars, { name, charId })
+    if (!char) continue
+
+    const payload = {
+      updatedAt: Number(local?.updatedAt) || 0,
+      filePath,
+      base,
+      char,
+    }
+
+    if (!best || payload.updatedAt > best.updatedAt) best = payload
+  }
+
+  return best
+}
+
 function safeJsonParse(text, fallback) {
   try {
     return JSON.parse(text)

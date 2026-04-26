@@ -505,6 +505,73 @@ function buildPoolsByPoolId(items, { kind = "char", hasFree = true } = {}) {
   })
 }
 
+function setIconMapByName(map, name, url) {
+  const rawName = String(name || "").trim()
+  const rawUrl = String(url || "").trim()
+  if (!rawName || !rawUrl) return
+
+  if (!map.has(rawName)) map.set(rawName, rawUrl)
+
+  const nk = normalizeNameKey(rawName)
+  if (nk && !map.has(nk)) map.set(nk, rawUrl)
+}
+
+function getIconFromNameMap(map, name) {
+  const rawName = String(name || "").trim()
+  if (!rawName || !(map instanceof Map)) return ""
+  return map.get(rawName) || map.get(normalizeNameKey(rawName)) || ""
+}
+
+function pickCharAvatarUrl(raw = {}) {
+  const obj = raw && typeof raw === "object" ? raw : {}
+  const candidates = [
+    obj.url,
+    obj.avatarRtUrl,
+    obj.avatar_rt_url,
+    obj.illustrationUrl,
+    obj.illustration_url,
+    obj.avatarSqUrl,
+    obj.avatar_sq_url,
+    obj.avatarUrl,
+    obj.avatar_url,
+    obj.iconUrl,
+    obj.icon_url,
+  ]
+
+  for (const v of candidates) {
+    const s = String(v || "").trim()
+    if (s) return s
+  }
+  return ""
+}
+
+function appendCharIconMapsFromChars(chars, { byId, byName } = {}) {
+  const list = Array.isArray(chars) ? chars : []
+  for (const char of list) {
+    const charData = char?.charData && typeof char.charData === "object" ? char.charData : char
+    const iconUrl = pickCharAvatarUrl(charData)
+    if (!iconUrl) continue
+
+    const charId = String(charData?.id || char?.id || "").trim()
+    if (charId && byId instanceof Map && !byId.has(charId)) byId.set(charId, iconUrl)
+
+    const charName = String(charData?.name || char?.name || "").trim()
+    if (byName instanceof Map) setIconMapByName(byName, charName, iconUrl)
+  }
+}
+
+function appendCharIconMapFromWikiList(listData, byName) {
+  if (!(byName instanceof Map)) return
+  const groups = listData?.characters && typeof listData.characters === "object" ? listData.characters : {}
+  for (const entries of Object.values(groups)) {
+    for (const item of Array.isArray(entries) ? entries : []) {
+      const name = String(item?.name || "").trim()
+      const url = pickCharAvatarUrl(item)
+      setIconMapByName(byName, name, url)
+    }
+  }
+}
+
 function getLocalIconPath({ charId, weaponId } = {}) {
   const wid = String(weaponId || "").trim()
   if (wid) {
@@ -970,6 +1037,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
   const weaponList = Array.isArray(exportData?.weaponList) ? exportData.weaponList : []
 
   const avatarUserId = faceUserId != null ? faceUserId : userId
+  const iconUserId = String(faceUserId || userId || "").trim()
 
   // 6 星“花费抽数”：按保底规则，不计入免费抽。
   const charSixCost = buildSixCostByPoolId(charList, { excludeFree: true })
@@ -999,24 +1067,26 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
   if (aliasMap && typeof aliasMap === "object") {
     for (const [key, entryRaw] of Object.entries(aliasMap)) {
       const entry = entryRaw && typeof entryRaw === "object" ? entryRaw : {}
-      const url = String(entry.url || entry.avatarRtUrl || entry.illustrationUrl || entry.avatarSqUrl || "").trim()
+      const url = pickCharAvatarUrl(entry)
       if (!url) continue
 
       const id = String(entry.id || "").trim()
       if (id) charIconById.set(id, url)
 
       const name = String(entry.name || key || "").trim()
-      if (name) charIconByName.set(name, url)
+      setIconMapByName(charIconByName, name, url)
+      setIconMapByName(charIconByName, key, url)
     }
   }
 
   const weaponIconById = new Map()
   const weaponIconByName = new Map()
 
-  if (userId && weaponList.some(i => safeInt(i?.rarity) === 6)) {
+  if (iconUserId && (charList.some(i => safeInt(i?.rarity) === 6) || weaponList.some(i => safeInt(i?.rarity) === 6))) {
     try {
-      const cardRes = await getCardDetailForUser(userId)
+      const cardRes = await getCardDetailForUser(iconUserId)
       const chars = Array.isArray(cardRes?.res?.data?.detail?.chars) ? cardRes.res.data.detail.chars : []
+      appendCharIconMapsFromChars(chars, { byId: charIconById, byName: charIconByName })
       for (const char of chars) {
         const weaponData = char?.weapon?.weaponData || {}
         const iconUrl = String(weaponData?.iconUrl || "").trim()
@@ -1058,11 +1128,12 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
   // Only fetch wiki homepage list when we may need limited UP inference.
   let wikiListData = null
   try {
-    const needUpDetect = pools.some(
-      p => p.kind === "char" && isLimitedCharPool({ poolId: p.poolId, title: p.title }),
-    )
-    if (needUpDetect) wikiListData = await ensureListData()
+    const needUpDetect = pools.some(p => p.kind === "char" && isLimitedCharPool({ poolId: p.poolId, title: p.title }))
+    const needCharIconFallback = pools.some(p => p.kind === "char" && Array.isArray(p?.sixList) && p.sixList.length > 0)
+    if (needUpDetect || needCharIconFallback) wikiListData = await ensureListData()
   } catch {}
+
+  if (wikiListData) appendCharIconMapFromWikiList(wikiListData, charIconByName)
 
   const poolsView = pools.map(p => {
     const poolItems =
@@ -1118,11 +1189,11 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
       const charName = String(item?.charName || "").trim()
       let icon = ""
       if (charId) icon = charIconById.get(charId) || ""
-      if (!icon && charName) icon = charIconByName.get(charName) || ""
+      if (!icon && charName) icon = getIconFromNameMap(charIconByName, charName)
       const weaponId = String(item?.weaponId || "").trim()
       const weaponName = String(item?.weaponName || "").trim()
       if (!icon && weaponId) icon = weaponIconById.get(weaponId) || ""
-      if (!icon && weaponName) icon = weaponIconByName.get(weaponName) || ""
+      if (!icon && weaponName) icon = getIconFromNameMap(weaponIconByName, weaponName)
       const iconPath = getLocalIconPath({ charId, weaponId })
       return {
         logType: "six",
