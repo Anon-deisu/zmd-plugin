@@ -6,6 +6,9 @@
  * - 调用 model/card.js 获取数据
  * - 调用 model/render.js 渲染图片
  */
+import fsSync from "node:fs"
+import path from "node:path"
+
 import plugin from "../../../lib/plugins/plugin.js"
 
 import cfg from "../model/config.js"
@@ -21,11 +24,12 @@ import {
   getFriendDetail,
 } from "../model/friendApi.js"
 import { getActiveAccount } from "../model/store.js"
-import { pluginResourcesRelPath } from "../model/pluginMeta.js"
+import { PLUGIN_RESOURCES_DIR, pluginResourcesRelPath } from "../model/pluginMeta.js"
 import { ensureListData } from "../model/wiki/fetch.js"
 import { getMessageText, getQueryUserId } from "../model/mention.js"
 
 const GAME_TITLE = "[终末地]"
+const ITEM_ICON_DIR = path.join(PLUGIN_RESOURCES_DIR, "endfield", "itemiconbig")
 
 function safeInt(value, def = 0) {
   const n = Number.parseInt(`${value ?? ""}`, 10)
@@ -107,6 +111,71 @@ function findExactWikiCharacterEntry(listData, names = []) {
   }
 
   return null
+}
+
+function findWikiWeaponEntry(listData, names = []) {
+  const groups = listData?.weapons && typeof listData.weapons === "object" ? listData.weapons : {}
+  const entries = Object.values(groups).flatMap(list => (Array.isArray(list) ? list : []))
+  const keys = Array.from(new Set((Array.isArray(names) ? names : []).map(normalizePanelKey).filter(Boolean)))
+  if (!entries.length || !keys.length) return null
+
+  for (const key of keys) {
+    const exact = entries.find(item => {
+      const candidates = [item?.name, item?.id, item?.template_id].map(normalizePanelKey).filter(Boolean)
+      return candidates.includes(key)
+    })
+    if (exact) return exact
+  }
+
+  for (const key of keys) {
+    const fuzzy = entries.find(item => {
+      const name = normalizePanelKey(item?.name)
+      return name && (name.includes(key) || key.includes(name))
+    })
+    if (fuzzy) return fuzzy
+  }
+
+  return null
+}
+
+function pickImageUrl(obj) {
+  const o = obj && typeof obj === "object" ? obj : {}
+  const candidates = [
+    o.illustrationUrl,
+    o.illustration_url,
+    o.avatarRtUrl,
+    o.avatar_rt_url,
+    o.avatarSqUrl,
+    o.avatar_sq_url,
+    o.avatarUrl,
+    o.avatar_url,
+    o.iconUrl,
+    o.icon_url,
+    o.url,
+    o.imageUrl,
+    o.image_url,
+  ]
+  for (const v of candidates) {
+    const s = String(v || "").trim()
+    if (s) return s
+  }
+  return ""
+}
+
+function resolvePanelItemIcon({ rawName = "", names = [], entity = null, listData = null } = {}) {
+  const raw = String(rawName || "").trim()
+  if (raw && fsSync.existsSync(path.join(ITEM_ICON_DIR, `${raw}.png`))) {
+    return pluginResourcesRelPath(`endfield/itemiconbig/${raw}.png`)
+  }
+
+  const directIcon = pickImageUrl(entity)
+  if (directIcon) return directIcon
+
+  const wikiEntry = findWikiWeaponEntry(listData, [...(Array.isArray(names) ? names : []), raw])
+  const wikiIcon = pickImageUrl(wikiEntry)
+  if (wikiIcon) return wikiIcon
+
+  return ""
 }
 
 function deriveWeaponTypeText(charView) {
@@ -543,33 +612,10 @@ export class card extends plugin {
         const cv = computed.charView && typeof computed.charView === "object" ? computed.charView : {}
         const charName = String(computed.charMeta?.nameCn || computed.charMeta?.name || resolvedName || query)
 
-        const pickImageUrl = obj => {
-          const o = obj && typeof obj === "object" ? obj : {}
-          const candidates = [
-            o.illustrationUrl,
-            o.illustration_url,
-            o.avatarRtUrl,
-            o.avatar_rt_url,
-            o.avatarSqUrl,
-            o.avatar_sq_url,
-            o.avatarUrl,
-            o.avatar_url,
-            o.iconUrl,
-            o.icon_url,
-            o.url,
-            o.imageUrl,
-            o.image_url,
-          ]
-          for (const v of candidates) {
-            const s = String(v || "").trim()
-            if (s) return s
-          }
-          return ""
-        }
-
+        let listData = null
         let wikiChar = null
         try {
-          const listData = await ensureListData()
+          listData = await ensureListData()
           wikiChar = findWikiCharacterEntry(listData, [charName, resolvedName, query])
         } catch {}
 
@@ -616,7 +662,12 @@ export class card extends plugin {
           : []
 
         const weaponRaw = String(cv.weapon?.rawName || "").trim()
-        const weaponIcon = weaponRaw ? pluginResourcesRelPath(`endfield/itemiconbig/${weaponRaw}.png`) : ""
+        const weaponIcon = resolvePanelItemIcon({
+          rawName: weaponRaw,
+          names: [cv.weapon?.name, weaponRaw],
+          entity: cv.weapon,
+          listData,
+        })
         const weapon = cv.weapon
           ? {
               name: String(cv.weapon?.name || "武器"),
@@ -644,7 +695,12 @@ export class card extends plugin {
           const eq = equipBySlot.get(slot)
           if (!eq) return null
           const rawName = String(eq?.rawName || "").trim()
-          const icon = rawName ? pluginResourcesRelPath(`endfield/itemiconbig/${rawName}.png`) : ""
+          const icon = resolvePanelItemIcon({
+            rawName,
+            names: [eq?.name, rawName],
+            entity: eq,
+            listData,
+          })
           return { slotName, name: String(eq.name || placeholder), icon, level: "" }
         }
 
@@ -654,7 +710,12 @@ export class card extends plugin {
 
         if (cv.tacticalItem?.name) {
           const tacticalRaw = String(cv.tacticalItem?.rawName || "").trim()
-          const tacticalIcon = tacticalRaw ? pluginResourcesRelPath(`endfield/itemiconbig/${tacticalRaw}.png`) : ""
+          const tacticalIcon = resolvePanelItemIcon({
+            rawName: tacticalRaw,
+            names: [cv.tacticalItem?.name, tacticalRaw],
+            entity: cv.tacticalItem,
+            listData,
+          })
           equipSlots.push({ slotName: "战术道具", name: String(cv.tacticalItem.name), icon: tacticalIcon, level: "" })
         }
 

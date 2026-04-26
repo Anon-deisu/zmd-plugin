@@ -31,7 +31,12 @@ const AK_GACHA_CATE_API = "https://ak.hypergryph.com/user/api/inquiry/gacha/cate
 const AK_GACHA_HISTORY_API = "https://ak.hypergryph.com/user/api/inquiry/gacha/history"
 
 // Gacha table (pool meta) used for grouping by "限定/常驻/中坚".
-const GACHA_TABLE_URL = "https://weedy.prts.wiki/gacha_table.json"
+// 优先使用官数镜像，第三方站点作为兜底，避免单点失效导致整个分类回退到启发式判断。
+const GACHA_TABLE_URLS = [
+  "https://cdn.jsdelivr.net/gh/Kengxxiao/ArknightsGameData@master/zh_CN/gamedata/excel/gacha_table.json",
+  "https://raw.githubusercontent.com/Kengxxiao/ArknightsGameData/refs/heads/master/zh_CN/gamedata/excel/gacha_table.json",
+  "https://weedy.prts.wiki/gacha_table.json",
+]
 const GACHA_TABLE_REDIS_KEY = "Yz:EndUID:FzGachaTable"
 const GACHA_TABLE_TTL_SEC = 1800
 
@@ -135,32 +140,35 @@ async function getGachaRuleTypeById() {
   } catch {}
 
   // Network fetch
-  try {
-    const json = await fetchJsonWithTimeout(GACHA_TABLE_URL, {
-      timeoutMs: 10000,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    })
-
-    if (!json || typeof json !== "object") return null
-
+  for (const url of GACHA_TABLE_URLS) {
     try {
-      const raw = JSON.stringify(json)
-      try {
-        await redis.setEx(GACHA_TABLE_REDIS_KEY, GACHA_TABLE_TTL_SEC, raw)
-      } catch {
-        await redis.set(GACHA_TABLE_REDIS_KEY, raw, { EX: GACHA_TABLE_TTL_SEC })
-      }
-    } catch {}
+      const json = await fetchJsonWithTimeout(url, {
+        timeoutMs: 20000,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        },
+      })
 
-    const map = buildRuleTypeById(json)
-    if (!map) return null
-    gachaTableCache = { ruleTypeById: map, expiresAt: now + Math.max(60, GACHA_TABLE_TTL_SEC - 60) * 1000 }
-    return map
-  } catch {
-    return null
+      if (!json || typeof json !== "object") continue
+
+      const map = buildRuleTypeById(json)
+      if (!map) continue
+
+      try {
+        const raw = JSON.stringify(json)
+        try {
+          await redis.setEx(GACHA_TABLE_REDIS_KEY, GACHA_TABLE_TTL_SEC, raw)
+        } catch {
+          await redis.set(GACHA_TABLE_REDIS_KEY, raw, { EX: GACHA_TABLE_TTL_SEC })
+        }
+      } catch {}
+
+      gachaTableCache = { ruleTypeById: map, expiresAt: now + Math.max(60, GACHA_TABLE_TTL_SEC - 60) * 1000 }
+      return map
+    } catch {}
   }
+
+  return null
 }
 
 function sortTsPosDesc(a, b) {

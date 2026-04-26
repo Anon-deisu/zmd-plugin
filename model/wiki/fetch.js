@@ -92,6 +92,34 @@ function needsActivityOverview(data) {
   return !Array.isArray(data?.activities)
 }
 
+function hasIncompleteGachaEntries(data) {
+  const list = Array.isArray(data?.gacha) ? data.gacha : []
+  if (!list.length) return false
+  return list.some(item => !String(item?.target_name || "").trim())
+}
+
+function isInvalidListEntryName(name) {
+  const s = String(name || "").trim()
+  if (!s) return true
+  return /^(?:文件|File|特殊|Special):/i.test(s)
+}
+
+function hasInvalidListEntries(data, kind) {
+  const groups = data && typeof data === "object" ? data[kind] : null
+  if (!groups || typeof groups !== "object") return false
+
+  for (const entries of Object.values(groups)) {
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      if (isInvalidListEntryName(entry?.name)) return true
+    }
+  }
+  return false
+}
+
+function needsListRepair(data) {
+  return hasInvalidListEntries(data, "characters") || hasInvalidListEntries(data, "weapons") || hasIncompleteGachaEntries(data)
+}
+
 // 串行化网络抓取：更“礼貌”，也降低触发反爬的概率。
 let _lock = Promise.resolve()
 function withFetchLock(fn) {
@@ -161,7 +189,7 @@ async function refreshList(prevData = null) {
 
 export async function ensureListData() {
   const cached = await loadListData()
-  if (!cached || isListStale(cached) || needsActivityOverview(cached)) {
+  if (!cached || isListStale(cached) || needsActivityOverview(cached) || needsListRepair(cached)) {
     const refreshed = await refreshList(cached)
     return refreshed || cached
   }

@@ -222,10 +222,74 @@ function extractSectionSlice(html, heading, nextHeadings = []) {
   return source.slice(start, end)
 }
 
+function extractAnchorTitles(html) {
+  return [...String(html || "").matchAll(/<a[^>]*title=(\"([^\"]*)\"|'([^']*)')[^>]*>/gi)]
+    .map(m => cleanTextBlock(decodeHtml(m[2] ?? m[3] ?? "")))
+    .filter(Boolean)
+}
+
 function extractAnchorTexts(html) {
   return [...String(html || "").matchAll(/<a[^>]*>([\s\S]*?)<\/a>/gi)]
     .map(m => cleanTextBlock(stripTags(m[1] || "")))
     .filter(Boolean)
+}
+
+function decodeWikiHrefTarget(href) {
+  const rawHref = String(href || "").trim()
+  if (!rawHref) return ""
+
+  let raw = ""
+  const pathMatch = rawHref.match(/^\/zmd\/([^?#]+)/i)
+  if (pathMatch?.[1]) {
+    raw = pathMatch[1]
+  } else {
+    const titleMatch = rawHref.match(/[?&]title=([^&#]+)/i)
+    if (titleMatch?.[1]) raw = titleMatch[1]
+  }
+
+  if (!raw) return ""
+
+  try {
+    raw = decodeURIComponent(raw.replace(/\+/g, " "))
+  } catch {}
+
+  return cleanTextBlock(raw.replaceAll("_", " "))
+}
+
+function extractAnchorHrefTargets(html) {
+  return [...String(html || "").matchAll(/<a[^>]*href=("([^"]*)"|'([^']*)')[^>]*>/gi)]
+    .map(m => decodeWikiHrefTarget(m[2] ?? m[3] ?? ""))
+    .filter(Boolean)
+}
+
+function pickLinkedPageName(html, { blacklist = [] } = {}) {
+  const candidates = [...extractAnchorHrefTargets(html), ...extractAnchorTitles(html), ...extractAnchorTexts(html)]
+  for (const candidate of candidates) {
+    if (!isInvalidListEntryCandidate(candidate, blacklist)) return candidate
+  }
+  return ""
+}
+
+function isInvalidListEntryCandidate(text, blacklist = []) {
+  const s = cleanTextBlock(decodeHtml(String(text || "")))
+  if (!s) return true
+  if (/^(?:文件|File|特殊|Special):/i.test(s)) return true
+  if (/\.(?:png|jpe?g|webp|gif|svg)$/i.test(s)) return true
+
+  const deny = new Set(
+    (Array.isArray(blacklist) ? blacklist : [])
+      .map(item => cleanTextBlock(decodeHtml(String(item || ""))))
+      .filter(Boolean),
+  )
+  return deny.has(s)
+}
+
+function pickListEntryName(html, { blacklist = [] } = {}) {
+  const candidates = [...extractAnchorTitles(html), ...extractAnchorTexts(html)]
+  for (const candidate of candidates) {
+    if (!isInvalidListEntryCandidate(candidate, blacklist)) return candidate
+  }
+  return ""
 }
 
 function extractFirstImgUrl(html) {
@@ -346,6 +410,10 @@ function parseActivityBlock(blockHtml, { bannerType }) {
       const attrs = parseAttrs(img[0])
       target_icon_url = bestImgUrl(attrs)
     }
+  }
+
+  if (!target_name) {
+    target_name = pickLinkedPageName(blockHtml, { blacklist: [bannerName, ...events] })
   }
 
   let start_timestamp = 0
@@ -470,14 +538,15 @@ export function parseHomepage(html) {
 
     const start = m.index
     // 仅截取一段局部 HTML 做启发式解析，避免全量解析器带来的复杂度与性能开销。
-    const slice = source.slice(start, Math.min(source.length, start + 1800))
-    const aMatch = slice.match(/<a[^>]*title=(\"([^\"]*)\"|'([^']*)')/i)
-    const name = aMatch?.[2] ?? aMatch?.[3] ?? ""
-    if (!name) continue
+    // 新角色/武器若首图文件缺失，真实名称锚点会出现在更靠后的位置，因此窗口适当放大。
+    const slice = source.slice(start, Math.min(source.length, start + 3600))
 
     const imgTags = [...slice.matchAll(/<img[^>]*>/gi)].map(x => x[0])
 
     if (rarityStr && profession && attribute) {
+      const name = pickListEntryName(slice, { blacklist: [rarityStr, profession, attribute] })
+      if (!name) continue
+
       const rarity = STAR_RARITY_MAP[rarityStr] || 0
       let avatar_url = ""
       if (imgTags.length) avatar_url = bestImgUrl(parseAttrs(imgTags[0]))
@@ -490,6 +559,9 @@ export function parseHomepage(html) {
 
     const weaponType = String(attrs["data-param1"] || "").trim()
     if (weaponType) {
+      const name = pickListEntryName(slice, { blacklist: [weaponType] })
+      if (!name) continue
+
       let rarity = 0
       let icon_url = ""
       for (const imgTag of imgTags) {
