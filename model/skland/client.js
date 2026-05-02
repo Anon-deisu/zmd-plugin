@@ -376,10 +376,23 @@ export async function getScanStatus(scanId, userId) {
   const url = `${SCAN_STATUS_API}?scanId=${encodeURIComponent(scanId)}`
   const resp = await fetch(url, { method: "GET", headers: await getHypergryphHeaders(userId, { json: false }) })
   const { json: data, text } = await readJsonWithRaw(resp)
-  assertHypergryphOk("查询扫码状态", resp, data, text)
+
+  if (!resp.ok) {
+    throw new Error(`查询扫码状态失败：http=${resp.status} body=${compactText(text, 300) || "empty"}`)
+  }
+
+  if (!data || typeof data !== "object") {
+    throw new Error(`查询扫码状态失败：返回非 JSON，body=${compactText(text, 300) || "empty"}`)
+  }
+
+  // 上游实现确认：未扫码/未授权时这里会返回非 0，这是正常轮询状态，不能当异常抛出。
+  if (Number(data.status) !== 0) return ""
 
   const payload = data.data
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return ""
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`查询扫码状态失败：status=0 但 data 异常，body=${compactText(data, 500)}`)
+  }
+
   return pickTextField(payload, "scanCode", {
     apiName: "查询扫码状态",
     nestedKeys: ["value", "code", "scanCode", "scan_code"],
