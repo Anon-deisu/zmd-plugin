@@ -233,6 +233,62 @@ function getItemKey(item) {
   return `${poolId}|${gachaTs}|${pos}`
 }
 
+function pickPoolName(poolItems, fallback = "") {
+  const sorted = (poolItems || []).slice().sort(sortTsPosDesc)
+  for (const item of sorted) {
+    const name = String(item?.poolName || "").trim()
+    if (name) return name
+  }
+  return String(fallback || "").trim()
+}
+
+function getGroupOrderIndex(groupKey) {
+  const idx = GROUP_ORDER.indexOf(String(groupKey || ""))
+  return idx >= 0 ? idx : GROUP_ORDER.length
+}
+
+function buildPoolsByPoolId(items, { ruleTypeById = null } = {}) {
+  const byPool = new Map()
+  for (const item of items || []) {
+    const poolId = String(item?.poolId || "").trim() || "unknown"
+    if (!byPool.has(poolId)) byPool.set(poolId, [])
+    byPool.get(poolId).push(item)
+  }
+
+  const pools = []
+  for (const [poolId, poolItems] of byPool.entries()) {
+    let ruleType = -1
+    if (ruleTypeById instanceof Map && poolId && ruleTypeById.has(poolId)) ruleType = ruleTypeById.get(poolId)
+    if (ruleType < 0) ruleType = inferGachaRuleType(poolId)
+    const groupKey = pickGroupKeyByRuleType(ruleType)
+    const groupTitle = GROUP_TITLE[groupKey] || "其他"
+    const latestTs = Math.max(...poolItems.map(i => safeInt(i?.gachaTs, 0)))
+    const title = pickPoolName(poolItems, groupTitle ? `${groupTitle}卡池` : "未知卡池")
+
+    pools.push({
+      key: `pool:${poolId}`,
+      kind: "char",
+      poolId,
+      title,
+      groupKey,
+      groupTitle,
+      groupOrder: getGroupOrderIndex(groupKey),
+      timeRange: formatYmdRangeFromMs(poolItems),
+      pity: Math.max(0, Math.min(99, safeInt(getPityFromRecent(poolItems, { topRarity: 5 }), 0))),
+      stats: buildPoolStats(poolItems),
+      sixList: poolItems.filter(i => safeInt(i?.rarity) === 5).sort(sortTsPosDesc).slice(0, 24),
+      latestTs,
+      items: poolItems,
+    })
+  }
+
+  return pools.sort((a, b) => {
+    if (b.latestTs !== a.latestTs) return b.latestTs - a.latestTs
+    if (a.groupOrder !== b.groupOrder) return a.groupOrder - b.groupOrder
+    return String(a.title || a.poolId || "").localeCompare(String(b.title || b.poolId || ""), "zh-Hans-CN")
+  })
+}
+
 function getLatestCursor(items) {
   if (!Array.isArray(items) || !items.length) return { gachaTs: 0, pos: -1 }
 
@@ -765,48 +821,16 @@ export async function getFzGachaLogViewForUser(userId) {
 
   const ruleTypeById = await getGachaRuleTypeById()
 
-  // poolId -> groupKey (limit/norm/doub/other)
-  const byGroup = new Map()
-  for (const it of list) {
-    const poolId = String(it?.poolId || "").trim()
-    let ruleType = -1
-    if (ruleTypeById && poolId && ruleTypeById.has(poolId)) ruleType = ruleTypeById.get(poolId)
-    if (ruleType < 0) ruleType = inferGachaRuleType(poolId)
-    const groupKey = pickGroupKeyByRuleType(ruleType)
-
-    if (!byGroup.has(groupKey)) byGroup.set(groupKey, [])
-    byGroup.get(groupKey).push(it)
-  }
-
-  const pools = []
+  // 按具体 poolId 拆分卡池，而不是把所有记录聚合到“限定/常驻/中坚”大类中。
+  const pools = buildPoolsByPoolId(list, { ruleTypeById })
   const poolsView = []
 
-  for (const groupKey of GROUP_ORDER) {
-    const groupItems = byGroup.get(groupKey) || []
-    if (!groupItems.length) continue
-
+  for (const rawPool of pools) {
+    const { items: poolItems = [], sixList = [], ...pool } = rawPool
     const max = 99
-
-    const latestTs = Math.max(...groupItems.map(i => safeInt(i?.gachaTs, 0)))
-    const title = GROUP_TITLE[groupKey] || "未知"
-    const pity = Math.max(0, Math.min(max, safeInt(getPityFromRecent(groupItems, { topRarity: 5 }), 0)))
-    const stats = buildPoolStats(groupItems)
-    const sixList = groupItems.filter(i => safeInt(i?.rarity) === 5).sort(sortTsPosDesc).slice(0, 24)
-
-    const pool = {
-      key: `group:${groupKey}`,
-      kind: "char",
-      poolId: groupKey,
-      title,
-      timeRange: formatYmdRangeFromMs(groupItems),
-      pity,
-      stats,
-      sixList,
-      latestTs,
-    }
-    pools.push(pool)
-
-    const cost = buildTopCostByItems(groupItems, { topRarity: 5 })
+    const pity = safeInt(pool.pity, 0)
+    const stats = pool.stats || buildPoolStats(poolItems)
+    const cost = buildTopCostByItems(poolItems, { topRarity: 5 })
 
     const logs = sixList.map(item => {
       const name = String(item?.charName || "未知")

@@ -335,9 +335,9 @@
   <div class="user-banner" style="background-image:url({{_res_path}}{{face?.banner}})">
     <div class="face">
       {{if face?.qFace || face?.face}}
-      <span style="background-image:url({{face?.qFace||face?.face}})"></span>
+      <span style="background-image:url('{{face?.qFace||face?.face}}')"></span>
       {{else}}
-      <span style="background-image:url({{_res_path}}skin/common/face/what.jpg)"></span>
+      <span style="background-image:url('{{_res_path}}skin/common/face/what.jpg')"></span>
       {{/if}}
     </div>
     <div class="user-info">

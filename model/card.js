@@ -93,9 +93,9 @@ function matchCharFromCache(chars, { name = "", charId = "" } = {}) {
   return null
 }
 
-export async function findLocalCardCharByRoleId(roleId, { name = "", charId = "" } = {}) {
+async function listLocalCardCacheCandidatesByRoleId(roleId) {
   const rid = String(roleId || "").trim()
-  if (!rid) return null
+  if (!rid) return []
 
   const suffix = `_${sanitizeFilename(rid)}.json`
   const candidates = []
@@ -118,6 +118,44 @@ export async function findLocalCardCharByRoleId(roleId, { name = "", charId = ""
       candidates.push(filePath)
     }
   }
+
+  return candidates
+}
+
+export async function getLocalCardDetailByRoleId(roleId) {
+  const rid = String(roleId || "").trim()
+  if (!rid) return null
+
+  const candidates = await listLocalCardCacheCandidatesByRoleId(rid)
+  if (!candidates.length) return null
+
+  let best = null
+  for (const filePath of candidates) {
+    const local = await loadJson(filePath)
+    const detail = local?.res?.data?.detail
+    if (!detail || typeof detail !== "object") continue
+
+    const base = detail.base && typeof detail.base === "object" ? detail.base : {}
+    if (String(base.roleId || "").trim() !== rid) continue
+
+    const payload = {
+      updatedAt: Number(local?.updatedAt) || 0,
+      filePath,
+      base,
+      detail,
+    }
+
+    if (!best || payload.updatedAt > best.updatedAt) best = payload
+  }
+
+  return best
+}
+
+export async function findLocalCardCharByRoleId(roleId, { name = "", charId = "" } = {}) {
+  const rid = String(roleId || "").trim()
+  if (!rid) return null
+
+  const candidates = await listLocalCardCacheCandidatesByRoleId(rid)
 
   if (!candidates.length) return null
 

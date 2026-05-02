@@ -70,12 +70,31 @@
     gap: 2px;
   }
 
+  .fz-gachalog .pool-name .name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
   .fz-gachalog .pool-name .name {
     font-size: 20px;
     font-weight: 700;
     color: #d3bc8e;
     line-height: 22px;
     text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  }
+
+  .fz-gachalog .pool-name .pool-type {
+    padding: 1px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(211, 188, 142, 0.38);
+    background: rgba(211, 188, 142, 0.16);
+    color: rgba(255, 236, 190, 0.92);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 18px;
+    text-shadow: 0 0 3px rgba(0, 0, 0, 0.72);
   }
 
   .fz-gachalog .pool-name .time {
@@ -340,7 +359,10 @@
     <div class="cont-title border-less">
       <div class="pool-title">
         <div class="pool-name">
-          <div class="name">{{pool.title}}</div>
+          <div class="name-row">
+            <div class="name">{{pool.title}}</div>
+            {{if pool.groupTitle}}<div class="pool-type">{{pool.groupTitle}}</div>{{/if}}
+          </div>
           <div class="time">{{pool.timeRange}}</div>
         </div>
         <div class="pool-stat">

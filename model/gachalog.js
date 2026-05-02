@@ -18,7 +18,7 @@ import path from "node:path"
 import fetch from "node-fetch"
 
 import { loadAliasMap } from "./alias.js"
-import { getCardDetailForUser } from "./card.js"
+import { getCardDetailForUser, getLocalCardDetailByRoleId } from "./card.js"
 import { ensureListData } from "./wiki/fetch.js"
 import {
   buildHypergryphHeaders,
@@ -30,11 +30,13 @@ import {
 } from "./store.js"
 import { OAUTH_API } from "./skland/api.js"
 
-import { LEGACY_PLUGIN_DATA_DIR, PLUGIN_DATA_DIR, PLUGIN_RESOURCES_DIR } from "./pluginMeta.js"
+import { LEGACY_PLUGIN_DATA_DIR, PLUGIN_DATA_DIR, PLUGIN_RESOURCES_DIR, pluginResourcesRelPath } from "./pluginMeta.js"
 
 const DATA_DIR = path.join(PLUGIN_DATA_DIR, "gachalog")
 const LEGACY_DATA_DIR = path.join(LEGACY_PLUGIN_DATA_DIR, "gachalog")
 const RES_DIR = PLUGIN_RESOURCES_DIR
+const CHAR_ICON_DIR = path.join(RES_DIR, "endfield", "charicon")
+const LOCAL_IMAGE_EXTS = [".png", ".webp", ".jpg", ".jpeg"]
 
 function gachaExportFilePaths(roleId) {
   const rid = String(roleId ?? "").trim()
@@ -147,6 +149,96 @@ function getQqAvatarUrl(userId) {
   const id = String(userId ?? "").trim()
   if (!id) return ""
   return `https://q.qlogo.cn/headimg_dl?dst_uin=${encodeURIComponent(id)}&spec=640`
+}
+
+function detectImageExt(url = "", contentType = "") {
+  const ct = String(contentType || "").trim().toLowerCase()
+  if (ct.includes("image/png")) return ".png"
+  if (ct.includes("image/webp")) return ".webp"
+  if (ct.includes("image/jpeg") || ct.includes("image/jpg")) return ".jpg"
+
+  try {
+    const pathname = new URL(String(url || "").trim()).pathname.toLowerCase()
+    for (const ext of LOCAL_IMAGE_EXTS) {
+      if (pathname.endsWith(ext)) return ext
+    }
+  } catch {}
+
+  return ".png"
+}
+
+function findExistingLocalImageRel(baseName) {
+  const raw = String(baseName || "").trim()
+  if (!raw) return ""
+  for (const ext of LOCAL_IMAGE_EXTS) {
+    const rel = `endfield/charicon/${raw}${ext}`
+    const fp = path.join(CHAR_ICON_DIR, `${raw}${ext}`)
+    if (fsSync.existsSync(fp)) return rel
+  }
+  return ""
+}
+
+async function downloadImageBuffer(url, { referer = "" } = {}) {
+  const u = String(url || "").trim()
+  if (!u) return null
+
+  const headers = {
+    "User-Agent": "Mozilla/5.0",
+    Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+  }
+  if (referer) headers.Referer = referer
+
+  const resp = await fetch(u, { method: "GET", headers })
+  if (!resp.ok) return null
+
+  const buf = Buffer.from(await resp.arrayBuffer())
+  if (!buf.length) return null
+
+  return {
+    buf,
+    ext: detectImageExt(u, resp.headers.get("content-type") || ""),
+  }
+}
+
+async function ensureLocalCharIcon(charId, url) {
+  const cid = String(charId || "").trim()
+  const iconUrl = String(url || "").trim()
+  if (!cid || !iconUrl) return ""
+
+  const existing = findExistingLocalImageRel(`icon_${cid}`)
+  if (existing) return existing
+
+  try {
+    const downloaded = await downloadImageBuffer(iconUrl, { referer: "https://www.skland.com/" })
+    if (!downloaded?.buf?.length) return ""
+    await fs.mkdir(CHAR_ICON_DIR, { recursive: true })
+    const fileName = `icon_${cid}${downloaded.ext || ".png"}`
+    const filePath = path.join(CHAR_ICON_DIR, fileName)
+    await fs.writeFile(filePath, downloaded.buf)
+    return `endfield/charicon/${fileName}`
+  } catch {
+    return ""
+  }
+}
+
+async function ensureLocalQqFace(userId) {
+  const uid = String(userId || "").trim()
+  if (!uid) return ""
+
+  const existing = findExistingLocalImageRel(`qq_${uid}`)
+  if (existing) return pluginResourcesRelPath(existing)
+
+  try {
+    const downloaded = await downloadImageBuffer(getQqAvatarUrl(uid))
+    if (!downloaded?.buf?.length) return ""
+    await fs.mkdir(CHAR_ICON_DIR, { recursive: true })
+    const fileName = `qq_${uid}${downloaded.ext || ".jpg"}`
+    const filePath = path.join(CHAR_ICON_DIR, fileName)
+    await fs.writeFile(filePath, downloaded.buf)
+    return pluginResourcesRelPath(`endfield/charicon/${fileName}`)
+  } catch {
+    return ""
+  }
 }
 
 function getCachedRoleOwner(roleId, { requireCred = false } = {}) {
@@ -582,9 +674,8 @@ function getLocalIconPath({ charId, weaponId } = {}) {
 
   const cid = String(charId || "").trim()
   if (cid) {
-    const rel = `endfield/charicon/icon_${cid}.png`
-    const fp = path.join(RES_DIR, "endfield", "charicon", `icon_${cid}.png`)
-    if (fsSync.existsSync(fp)) return rel
+    const rel = findExistingLocalImageRel(`icon_${cid}`)
+    if (rel) return rel
   }
 
   return ""
@@ -1036,7 +1127,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
   const charList = Array.isArray(exportData?.charList) ? exportData.charList : []
   const weaponList = Array.isArray(exportData?.weaponList) ? exportData.weaponList : []
 
-  const avatarUserId = faceUserId != null ? faceUserId : userId
+  const avatarUserId = String(faceUserId || userId || "").trim()
   const iconUserId = String(faceUserId || userId || "").trim()
 
   // 6 星“花费抽数”：按保底规则，不计入免费抽。
@@ -1082,9 +1173,30 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
   const weaponIconById = new Map()
   const weaponIconByName = new Map()
 
+  try {
+    const localCard = await getLocalCardDetailByRoleId(roleId)
+    const chars = Array.isArray(localCard?.detail?.chars) ? localCard.detail.chars : []
+    if (chars.length) {
+      appendCharIconMapsFromChars(chars, { byId: charIconById, byName: charIconByName })
+      for (const char of chars) {
+        const weaponData = char?.weapon?.weaponData || {}
+        const iconUrl = String(weaponData?.iconUrl || "").trim()
+        if (!iconUrl) continue
+
+        const weaponId = String(weaponData?.id || weaponData?.weaponId || weaponData?.itemId || "").trim()
+        if (weaponId && !weaponIconById.has(weaponId)) weaponIconById.set(weaponId, iconUrl)
+
+        const weaponName = String(weaponData?.name || "").trim()
+        if (weaponName && !weaponIconByName.has(weaponName)) weaponIconByName.set(weaponName, iconUrl)
+      }
+    }
+  } catch {}
+
   if (iconUserId && (charList.some(i => safeInt(i?.rarity) === 6) || weaponList.some(i => safeInt(i?.rarity) === 6))) {
     try {
       const cardRes = await getCardDetailForUser(iconUserId)
+      const activeRoleId = String(cardRes?.account?.uid || "").trim()
+      if (!activeRoleId || activeRoleId !== String(roleId || "").trim()) throw new Error("active_card_uid_mismatch")
       const chars = Array.isArray(cardRes?.res?.data?.detail?.chars) ? cardRes.res.data.detail.chars : []
       appendCharIconMapsFromChars(chars, { byId: charIconById, byName: charIconByName })
       for (const char of chars) {
@@ -1135,7 +1247,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
 
   if (wikiListData) appendCharIconMapFromWikiList(wikiListData, charIconByName)
 
-  const poolsView = pools.map(p => {
+  let poolsView = pools.map(p => {
     const poolItems =
       p.kind === "weapon"
         ? (weaponItemsByPoolId.get(String(p.poolId || "").trim()) || [])
@@ -1205,6 +1317,8 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
         count,
         icon,
         iconPath,
+        charId,
+        weaponId,
         cls: isFree ? "wai" : hasLimitedUp && safeInt(item?.rarity) === 6 && !isUp ? "wai" : "up",
         rarity: safeInt(item?.rarity),
         isFree,
@@ -1259,14 +1373,26 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
     }
   })
 
+  for (const pool of poolsView) {
+    for (const log of Array.isArray(pool?.logs) ? pool.logs : []) {
+      if (log?.iconPath || !log?.icon || !log?.charId) continue
+      try {
+        const localIconPath = await ensureLocalCharIcon(log.charId, log.icon)
+        if (localIconPath) log.iconPath = localIconPath
+      } catch {}
+    }
+  }
+
+  const localFace = avatarUserId ? await ensureLocalQqFace(avatarUserId) : ""
+
   const view = {
     elem: "sr",
     uid: roleId,
     exportTime,
     face: {
       banner: "skin/common/bg/bg-sr.webp",
-      face: getQqAvatarUrl(avatarUserId),
-      qFace: getQqAvatarUrl(avatarUserId),
+      face: localFace || getQqAvatarUrl(avatarUserId),
+      qFace: localFace || getQqAvatarUrl(avatarUserId),
       name: String(account.nickname || "未命名"),
     },
     gacha: {
