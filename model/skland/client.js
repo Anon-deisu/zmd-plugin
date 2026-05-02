@@ -52,12 +52,91 @@ function buildQueryString(params) {
 
 async function readJsonSafe(resp) {
   // Skland 可能返回非 JSON 的错误体；解析失败则当作 null。
+  const { json } = await readJsonWithRaw(resp)
+  return json
+}
+
+async function readJsonWithRaw(resp) {
   const text = await resp.text()
   try {
-    return JSON.parse(text)
+    return { json: JSON.parse(text), text }
   } catch {
-    return null
+    return { json: null, text }
   }
+}
+
+function compactText(value, max = 600) {
+  let text = ""
+  if (typeof value === "string") text = value
+  else {
+    try {
+      text = JSON.stringify(value)
+    } catch {
+      text = String(value)
+    }
+  }
+  text = text.replace(/\s+/g, " ").trim()
+  return text.length > max ? `${text.slice(0, max)}...` : text
+}
+
+function describeValue(value) {
+  const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value).slice(0, 12).join(",") || "empty"
+    return `${type}(keys=${keys}) ${compactText(value, 300)}`
+  }
+  return `${type} ${compactText(value, 300)}`
+}
+
+function assertHypergryphOk(apiName, resp, json, rawText) {
+  if (!json || typeof json !== "object") {
+    throw new Error(`${apiName} 返回非 JSON：http=${resp?.status || "unknown"} body=${compactText(rawText || "", 300) || "empty"}`)
+  }
+  if (json.status !== 0) {
+    const msg = json.msg ?? json.message ?? json.error ?? "unknown"
+    throw new Error(`${apiName} 返回异常：http=${resp?.status || "unknown"} status=${json.status ?? "missing"} msg=${compactText(msg, 200)} body=${compactText(json, 500)}`)
+  }
+}
+
+function pickTextField(source, fieldName, { apiName, required = false, nestedKeys = [] } = {}) {
+  const value = source?.[fieldName]
+  if (typeof value === "string") return value.trim()
+  if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean") return String(value).trim()
+  if (value == null || value === "") {
+    if (required) throw new Error(`${apiName || "接口"} 缺少字段：${fieldName}`)
+    return ""
+  }
+
+  if (value && typeof value === "object") {
+    for (const key of nestedKeys) {
+      const nested = value[key]
+      if (typeof nested === "string" && nested.trim()) return nested.trim()
+      if (typeof nested === "number" || typeof nested === "bigint" || typeof nested === "boolean") return String(nested).trim()
+    }
+  }
+
+  throw new Error(`${apiName || "接口"} 字段类型异常：${fieldName} 应为字符串，实际为 ${describeValue(value)}`)
+}
+
+function pickFirstTextField(source, fieldNames, options = {}) {
+  let lastErr = null
+  for (const fieldName of Array.isArray(fieldNames) ? fieldNames : []) {
+    try {
+      const value = pickTextField(source, fieldName, { ...options, required: false })
+      if (value) return value
+    } catch (err) {
+      lastErr = err
+    }
+  }
+
+  if (options.required) {
+    throw lastErr || new Error(`${options.apiName || "接口"} 缺少字段：${(fieldNames || []).join("/")}`)
+  }
+  return ""
+}
+
+function makeApiError(error, message) {
+  return { error, message }
 }
 
 async function getHypergryphHeaders(userId, { json = true } = {}) {
@@ -271,12 +350,24 @@ export async function getScanId(userId) {
     method: "POST",
     headers: await getHypergryphHeaders(userId, { json: false }),
   })
-  const data = await readJsonSafe(resp)
-  if (!data || data.status !== 0) return { scanId: "", scanUrl: "", enableScanAppList: [] }
+  const { json: data, text } = await readJsonWithRaw(resp)
+  assertHypergryphOk("获取扫码登录参数", resp, data, text)
 
-  const scanId = String(data.data?.scanId || "")
-  const scanUrl = String(data.data?.scanUrl || "")
-  const enableScanAppList = Array.isArray(data.data?.enableScanAppList) ? data.data.enableScanAppList : []
+  const payload = data.data
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`获取扫码登录参数返回 data 异常：${describeValue(payload)}`)
+  }
+
+  const scanId = pickTextField(payload, "scanId", {
+    apiName: "获取扫码登录参数",
+    required: true,
+    nestedKeys: ["value", "id", "scanId", "scan_id"],
+  })
+  const scanUrl = pickTextField(payload, "scanUrl", {
+    apiName: "获取扫码登录参数",
+    nestedKeys: ["value", "url", "href", "scanUrl", "scan_url", "qrCode", "qrcode"],
+  })
+  const enableScanAppList = Array.isArray(payload.enableScanAppList) ? payload.enableScanAppList : []
   return { scanId, scanUrl, enableScanAppList }
 }
 
@@ -284,9 +375,15 @@ export async function getScanStatus(scanId, userId) {
   // 轮询扫码状态：用户在 App 内确认后才会下发 scanCode。
   const url = `${SCAN_STATUS_API}?scanId=${encodeURIComponent(scanId)}`
   const resp = await fetch(url, { method: "GET", headers: await getHypergryphHeaders(userId, { json: false }) })
-  const data = await readJsonSafe(resp)
-  if (!data || data.status !== 0) return ""
-  return String(data.data?.scanCode || "")
+  const { json: data, text } = await readJsonWithRaw(resp)
+  assertHypergryphOk("查询扫码状态", resp, data, text)
+
+  const payload = data.data
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return ""
+  return pickTextField(payload, "scanCode", {
+    apiName: "查询扫码状态",
+    nestedKeys: ["value", "code", "scanCode", "scan_code"],
+  })
 }
 
 export async function getTokenByScanCode(scanCode, userId) {
@@ -296,11 +393,19 @@ export async function getTokenByScanCode(scanCode, userId) {
     headers: await getHypergryphHeaders(userId),
     body: JSON.stringify({ appCode: ENDFIELD_APP_CODE, from: 0, scanCode }),
   })
-  const data = await readJsonSafe(resp)
-  if (!data || data.status !== 0) return { token: "", deviceToken: "" }
+  const { json: data, text } = await readJsonWithRaw(resp)
+  assertHypergryphOk("扫码凭证换取 token", resp, data, text)
 
-  const token = String(data.data?.token || "")
-  const deviceToken = String(data.data?.deviceToken ?? data.data?.device_token ?? "")
+  const payload = data.data
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`扫码凭证换取 token 返回 data 异常：${describeValue(payload)}`)
+  }
+
+  const token = pickTextField(payload, "token", { apiName: "扫码凭证换取 token", required: true, nestedKeys: ["value", "token"] })
+  const deviceToken = pickFirstTextField(payload, ["deviceToken", "device_token"], {
+    apiName: "扫码凭证换取 token",
+    nestedKeys: ["value", "deviceToken", "device_token"],
+  })
   return { token, deviceToken }
 }
 
@@ -314,12 +419,17 @@ export async function getCredInfoByToken(token, { userId } = {}) {
   })
 
   // 405 一般表示接口拒绝当前请求方法/来源（可能与风控、接口变更有关）。
-  if (resp.status === 405) return { error: "405" }
+  if (resp.status === 405) return makeApiError("405", "获取 oauth code 失败：接口返回 405")
 
   const oauth = await readJsonSafe(resp)
-  if (!oauth || oauth.status !== 0) return { error: "oauth_failed" }
+  if (!oauth || oauth.status !== 0) {
+    return makeApiError(
+      "oauth_failed",
+      `获取 oauth code 失败：${compactText(oauth?.msg || oauth?.message || oauth || "未知错误", 300)}`,
+    )
+  }
   const code = oauth.data?.code
-  if (!code) return { error: "missing_oauth_code" }
+  if (!code) return makeApiError("missing_oauth_code", "获取 oauth code 失败：返回结果缺少 code")
 
   const acceptLanguage = "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"
   const did = await getDeviceId({
@@ -345,7 +455,12 @@ export async function getCredInfoByToken(token, { userId } = {}) {
     body: JSON.stringify({ kind: 1, code }),
   })
   const data2 = await readJsonSafe(resp2)
-  if (!data2 || data2.code !== 0 || !data2.data?.cred) return { error: "cred_failed" }
+  if (!data2 || data2.code !== 0 || !data2.data?.cred) {
+    return makeApiError(
+      "cred_failed",
+      `获取 cred 失败：${compactText(data2?.msg || data2?.message || data2 || "未知错误", 300)}`,
+    )
+  }
 
   const sklandUserId =
     data2.data.userId ??

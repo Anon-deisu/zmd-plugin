@@ -27,13 +27,29 @@ async function getQrLib() {
   }
 }
 
+function describeValue(value) {
+  const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value
+  if (type === "object" || type === "array") {
+    try {
+      const json = JSON.stringify(value)
+      return `${type}: ${json.length > 300 ? `${json.slice(0, 300)}...` : json}`
+    } catch {
+      return type
+    }
+  }
+  return `${type}: ${String(value)}`
+}
+
 export async function makeQrPng(text) {
   const tmpDir = path.join(process.cwd(), "temp", PLUGIN_ID)
   await fs.mkdir(tmpDir, { recursive: true })
 
   const outPath = path.join(tmpDir, uniqueName("zmd_qr", "png"))
-  const value = String(text || "").trim()
+  if (typeof text !== "string") throw new Error(`二维码内容必须是字符串，实际收到 ${describeValue(text)}`)
+
+  const value = text.trim()
   if (!value) throw new Error("二维码内容为空")
+  if (/^\[object\s+[^\]]+\]$/.test(value)) throw new Error(`二维码内容异常：${value}，请检查扫码接口返回字段类型`)
 
   const QRCode = await getQrLib()
   await new Promise((resolve, reject) => {

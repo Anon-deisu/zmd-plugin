@@ -54,6 +54,38 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function compactLogValue(value, max = 800) {
+  let text = ""
+  if (typeof value === "string") text = value
+  else {
+    try {
+      text = JSON.stringify(value)
+    } catch {
+      text = String(value)
+    }
+  }
+  text = text.replace(/\s+/g, " ").trim()
+  return text.length > max ? `${text.slice(0, max)}...` : text
+}
+
+function formatThrowable(err) {
+  if (err instanceof Error) return err.message || err.name || "Error"
+  if (typeof err === "string") return err
+  if (err && typeof err === "object") return compactLogValue(err)
+  return String(err || "未知错误")
+}
+
+function logThrowable(action, err) {
+  const msg = formatThrowable(err)
+  const detail = err instanceof Error ? err.stack || err.message : msg
+  logger.error(`${GAME_TITLE} ${action}：${detail}`)
+  return msg
+}
+
+function looksLikeObjectString(text) {
+  return /^\[object\s+[^\]]+\]$/.test(String(text || "").trim())
+}
+
 async function replyPrivate(e, msg) {
   if (!msg) return false
   try {
@@ -1424,18 +1456,27 @@ export class enduid extends plugin {
     let scanUrl = ""
     try {
       const scan = await getScanId(e.user_id)
-      scanId = String(scan?.scanId || "")
-      scanUrl = String(scan?.scanUrl || "")
+      scanId = typeof scan?.scanId === "string" ? scan.scanId.trim() : ""
+      scanUrl = typeof scan?.scanUrl === "string" ? scan.scanUrl.trim() : ""
     } catch (err) {
-      await replyPrivate(e, `${GAME_TITLE} 获取二维码失败：${err?.message || err}`)
+      const msg = logThrowable("获取二维码参数失败", err)
+      await replyPrivate(e, `${GAME_TITLE} 获取二维码失败：${msg}`)
       return true
     }
-    if (!scanId) {
-      await replyPrivate(e, `${GAME_TITLE} 获取二维码失败，请稍后重试`)
+    if (!scanId || looksLikeObjectString(scanId)) {
+      const msg = `扫码接口返回 scanId 异常：${scanId || "empty"}`
+      logger.error(`${GAME_TITLE} ${msg}`)
+      await replyPrivate(e, `${GAME_TITLE} 获取二维码失败：${msg}`)
+      return true
+    }
+    if (looksLikeObjectString(scanUrl)) {
+      const msg = `扫码接口返回 scanUrl 异常：${scanUrl}`
+      logger.error(`${GAME_TITLE} ${msg}`)
+      await replyPrivate(e, `${GAME_TITLE} 获取二维码失败：${msg}`)
       return true
     }
 
-    scanUrl = scanUrl || `hypergryph://scan_login?scanId=${scanId}`
+    scanUrl = scanUrl || `hypergryph://scan_login?scanId=${encodeURIComponent(scanId)}`
 
     let qrPath = ""
     try {
@@ -1448,7 +1489,8 @@ export class enduid extends plugin {
         ],
       )
     } catch (err) {
-      await replyPrivate(e, `${GAME_TITLE} 生成二维码失败：${err?.message || err}\n你也可以改用：${cfg.cmd?.prefix || "#zmd"}绑定 <cred>`)
+      const msg = logThrowable("生成二维码失败", err)
+      await replyPrivate(e, `${GAME_TITLE} 生成二维码失败：${msg}\n你也可以改用：${cfg.cmd?.prefix || "#zmd"}绑定 <cred>`)
       return true
     } finally {
       if (qrPath) {
@@ -1464,7 +1506,8 @@ export class enduid extends plugin {
         if (scanCode) break
       }
     } catch (err) {
-      await replyPrivate(e, `${GAME_TITLE} 扫码状态查询失败：${err?.message || err}`)
+      const msg = logThrowable("扫码状态查询失败", err)
+      await replyPrivate(e, `${GAME_TITLE} 扫码状态查询失败：${msg}`)
       return true
     }
 
@@ -1480,7 +1523,8 @@ export class enduid extends plugin {
       token = typeof tokenRes === "string" ? tokenRes : String(tokenRes?.token || "")
       if (tokenRes && typeof tokenRes === "object") deviceToken = String(tokenRes.deviceToken || "")
     } catch (err) {
-      await replyPrivate(e, `${GAME_TITLE} 获取 token 失败：${err?.message || err}`)
+      const msg = logThrowable("获取 token 失败", err)
+      await replyPrivate(e, `${GAME_TITLE} 获取 token 失败：${msg}`)
       return true
     }
     if (!token) {
@@ -1492,11 +1536,18 @@ export class enduid extends plugin {
     try {
       info = await getCredInfoByToken(token, { userId: e.user_id })
     } catch (err) {
-      await replyPrivate(e, `${GAME_TITLE} 获取 cred 失败：${err?.message || err}`)
+      const msg = logThrowable("获取 cred 失败", err)
+      await replyPrivate(e, `${GAME_TITLE} 获取 cred 失败：${msg}`)
       return true
     }
     if (info?.error === "405") {
       await replyPrivate(e, `${GAME_TITLE} 当前服务无法使用 token 登录，请尝试使用 cred`)
+      return true
+    }
+    if (info?.error) {
+      const detail = String(info.message || info.error || "未知错误")
+      logger.error(`${GAME_TITLE} 获取 cred 失败：${detail}`)
+      await replyPrivate(e, `${GAME_TITLE} 获取 cred 失败：${detail}`)
       return true
     }
     if (!info?.cred) {
