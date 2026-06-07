@@ -10,14 +10,13 @@
 import fetch from "node-fetch"
 
 import config from "../config.js"
-import { buildHypergryphHeaders, getOrCreateHypergryphDevice, tokenKeyByCred } from "../store.js"
+import { tokenKeyByCred } from "../store.js"
 import {
   APP_CODE,
   BINDING_URL,
   CARD_DETAIL_URL,
   CRED_API,
   ARKNIGHTS_ATTENDANCE_URL,
-  ENDFIELD_APP_CODE,
   ENDFIELD_ATTENDANCE_URL,
   GAME_ID_ENDFIELD,
   OAUTH_API,
@@ -137,17 +136,6 @@ function pickFirstTextField(source, fieldNames, options = {}) {
 
 function makeApiError(error, message) {
   return { error, message }
-}
-
-async function getHypergryphHeaders(userId, { json = true } = {}) {
-  const uid = String(userId ?? "").trim()
-  if (!uid) return getOauthHeader()
-  try {
-    const device = await getOrCreateHypergryphDevice(uid)
-    return buildHypergryphHeaders(device, { json })
-  } catch {
-    return getOauthHeader()
-  }
 }
 
 export async function refreshToken(cred, { force = false } = {}) {
@@ -348,7 +336,8 @@ export async function getScanId(userId) {
   // 4) token 走 oauth -> cred，得到最终 cred。
   const resp = await fetch(SCAN_LOGIN_API, {
     method: "POST",
-    headers: await getHypergryphHeaders(userId, { json: false }),
+    headers: getOauthHeader(),
+    body: JSON.stringify({}),
   })
   const { json: data, text } = await readJsonWithRaw(resp)
   assertHypergryphOk("获取扫码登录参数", resp, data, text)
@@ -374,7 +363,8 @@ export async function getScanId(userId) {
 export async function getScanStatus(scanId, userId) {
   // 轮询扫码状态：用户在 App 内确认后才会下发 scanCode。
   const url = `${SCAN_STATUS_API}?scanId=${encodeURIComponent(scanId)}`
-  const resp = await fetch(url, { method: "GET", headers: await getHypergryphHeaders(userId, { json: false }) })
+  // 上游 EndUID 实现确认：scan_status 不携带 OAuth/device headers。
+  const resp = await fetch(url, { method: "GET" })
   const { json: data, text } = await readJsonWithRaw(resp)
 
   if (!resp.ok) {
@@ -403,8 +393,8 @@ export async function getTokenByScanCode(scanCode, userId) {
   // scanCode -> token/deviceToken，用于后续换取 Skland cred。
   const resp = await fetch(TOKEN_BY_SCAN_CODE_API, {
     method: "POST",
-    headers: await getHypergryphHeaders(userId),
-    body: JSON.stringify({ appCode: ENDFIELD_APP_CODE, from: 0, scanCode }),
+    headers: getOauthHeader(),
+    body: JSON.stringify({ scanCode }),
   })
   const { json: data, text } = await readJsonWithRaw(resp)
   assertHypergryphOk("扫码凭证换取 token", resp, data, text)
@@ -427,7 +417,7 @@ export async function getCredInfoByToken(token, { userId } = {}) {
   // 说明：这一步使用的是 Web 环境的 dId/headers（与 Skland App headers 不同）。
   const resp = await fetch(OAUTH_API, {
     method: "POST",
-    headers: await getHypergryphHeaders(userId),
+    headers: getOauthHeader(),
     body: JSON.stringify({ appCode: APP_CODE, token, type: 0 }),
   })
 

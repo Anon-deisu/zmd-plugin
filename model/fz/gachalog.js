@@ -13,8 +13,8 @@ import https from "node:https"
 import fetch from "node-fetch"
 
 import { PLUGIN_DATA_DIR } from "../pluginMeta.js"
-import { buildHypergryphHeaders, getOrCreateHypergryphDevice } from "../store.js"
 import { OAUTH_API } from "../skland/api.js"
+import { getOauthHeader } from "../skland/headers.js"
 import { getFzAccountForUser } from "./account.js"
 
 const GAME_TITLE = "[明日方舟]"
@@ -314,17 +314,6 @@ function isRecordNewerThanCursor(record, cursor) {
   return currentPos > latestPos
 }
 
-async function getHypergryphHeadersForUser(userId, { json = true } = {}) {
-  const uid = String(userId ?? "").trim()
-  if (!uid) return buildHypergryphHeaders(null, { json })
-  try {
-    const device = await getOrCreateHypergryphDevice(uid)
-    return buildHypergryphHeaders(device, { json })
-  } catch {
-    return buildHypergryphHeaders(null, { json })
-  }
-}
-
 async function getGrantToken(hgToken, { deviceToken, userId } = {}) {
   const payload = { token: String(hgToken), appCode: BINDING_APP_CODE, type: 1 }
   const dt = String(deviceToken || "").trim()
@@ -332,7 +321,7 @@ async function getGrantToken(hgToken, { deviceToken, userId } = {}) {
 
   const resp = await fetch(OAUTH_API, {
     method: "POST",
-    headers: await getHypergryphHeadersForUser(userId),
+    headers: getOauthHeader(),
     body: JSON.stringify(payload),
   })
 
@@ -345,7 +334,7 @@ async function getGrantToken(hgToken, { deviceToken, userId } = {}) {
 async function getRoleTokenByUid(uid, grantToken, { userId } = {}) {
   const resp = await fetch(U8_TOKEN_BY_UID_URL, {
     method: "POST",
-    headers: await getHypergryphHeadersForUser(userId),
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ uid: String(uid), token: String(grantToken) }),
   })
 

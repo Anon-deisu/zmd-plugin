@@ -21,14 +21,13 @@ import { loadAliasMap } from "./alias.js"
 import { getCardDetailForUser, getLocalCardDetailByRoleId } from "./card.js"
 import { ensureListData } from "./wiki/fetch.js"
 import {
-  buildHypergryphHeaders,
   findBestAccountByUid,
   getActiveAccount,
-  getOrCreateHypergryphDevice,
   getUserData,
   upsertAccount,
 } from "./store.js"
 import { OAUTH_API } from "./skland/api.js"
+import { getOauthHeader } from "./skland/headers.js"
 
 import { LEGACY_PLUGIN_DATA_DIR, PLUGIN_DATA_DIR, PLUGIN_RESOURCES_DIR, pluginResourcesRelPath } from "./pluginMeta.js"
 
@@ -85,17 +84,6 @@ async function readJsonSafe(resp) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-async function getHypergryphHeadersForUser(userId, { json = true } = {}) {
-  const uid = String(userId ?? "").trim()
-  if (!uid) return buildHypergryphHeaders(null, { json })
-  try {
-    const device = await getOrCreateHypergryphDevice(uid)
-    return buildHypergryphHeaders(device, { json })
-  } catch {
-    return buildHypergryphHeaders(null, { json })
-  }
 }
 
 function safeInt(value, def = 0) {
@@ -688,7 +676,7 @@ async function getBindingGrantToken(hgToken, { deviceToken, userId } = {}) {
 
   const resp = await fetch(OAUTH_API, {
     method: "POST",
-    headers: await getHypergryphHeadersForUser(userId),
+    headers: getOauthHeader(),
     body: JSON.stringify(payload),
   })
 
@@ -705,7 +693,6 @@ async function getBindingList(grantToken, { userId, roleId } = {}) {
   const query = new URLSearchParams({ appCode: "endfield", token }).toString()
   const resp = await fetch(`${BINDING_LIST_URL}?${query}`, {
     method: "GET",
-    headers: await getHypergryphHeadersForUser(userId, { json: false }),
   })
 
   if (!resp.ok) throw new Error(`获取绑定列表失败：HTTP ${resp.status}`)
@@ -732,7 +719,7 @@ async function getBindingList(grantToken, { userId, roleId } = {}) {
 async function getU8TokenByUid(uid, grantToken, { userId } = {}) {
   const resp = await fetch(U8_TOKEN_BY_UID_URL, {
     method: "POST",
-    headers: await getHypergryphHeadersForUser(userId),
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ uid: String(uid), token: String(grantToken) }),
   })
 
