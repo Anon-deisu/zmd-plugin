@@ -403,19 +403,35 @@ let autoSignRunning = false
 
 async function runFzAutoSignAll() {
   if (cfg.fz?.autoSign?.enableTask === false) return
-  if (autoSignRunning) return
+  if (autoSignRunning) {
+    logger.warn(`[zmd-plugin][fz] 自动签到跳过：已有任务正在执行`)
+    return
+  }
   autoSignRunning = true
 
   try {
     const users = await listFzAutoSignUsers()
-    if (!users.length) return
+    if (!users.length) {
+      logger.info(`[zmd-plugin][fz] 自动签到跳过：没有已开启的用户`)
+      return
+    }
 
-    const { resultsAll } = await runFzSignBatch(users)
+    const { success, signed, fail, skip, resultsAll } = await runFzSignBatch(users)
+    logger.info(`[zmd-plugin][fz] 自动签到完成：成功 ${success} | 已签 ${signed} | 失败 ${fail} | 跳过 ${skip}`)
+    if (fail || skip) {
+      const details = resultsAll
+        .filter(item => item.status === "fail" || item.status === "skip")
+        .map(item => item.text)
+        .join(" | ")
+      logger.warn(`[zmd-plugin][fz] 自动签到异常明细：${details}`)
+    }
 
     const notify = String(cfg.fz?.autoSign?.notifyUserId || "").trim()
     if (notify) {
       try {
-        await Bot.pickFriend(notify).sendMsg([`${GAME_TITLE} 自动签到结果：`, ...resultsAll.map(item => item.text)].join("\n"))
+        await Bot.pickFriend(notify).sendMsg(
+          [`${GAME_TITLE} 自动签到结果：`, ...resultsAll.map(item => item.text)].join("\n"),
+        )
       } catch (err) {
         logger.error(`[zmd-plugin][fz] 自动签到推送失败`, err)
       }
@@ -449,12 +465,14 @@ export class fz extends plugin {
         { reg: "^#?fz更新抽卡记录(?:\\s*.*)?$", fnc: "refresh" },
         { reg: "^#?fz抽卡记录(?:\\s*.*)?$", fnc: "show" },
       ],
-      task: {
-        name: "zmd-plugin方舟自动签到",
-        cron: String(cfg.fz?.autoSign?.cron || "0 10 4 * * *"),
-        fnc: runFzAutoSignAll,
-      },
     })
+
+    // Miao-Yunzai 会重建 super({ task })，需在 super() 后保留完整任务对象。
+    this.task = {
+      name: "zmd-plugin方舟自动签到",
+      cron: String(cfg.fz?.autoSign?.cron || "0 10 4 * * *"),
+      fnc: runFzAutoSignAll,
+    }
   }
 
   async help() {

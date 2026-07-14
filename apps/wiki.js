@@ -533,12 +533,14 @@ export class wiki extends plugin {
         { reg: "^#?(?:终末地|zmd)活动提醒列表$", fnc: "listActivityReminder" },
         { reg: "^#?(?:终末地|zmd)\\s*(.+?)\\s*(图鉴|介绍|技能|天赋|潜能|专武|武器)$", fnc: "query" },
       ],
-      task: {
-        name: "zmd-plugin活动提醒",
-        cron: String(cfg.activity?.cron || "0 */15 * * * *"),
-        fnc: () => this.runActivityReminderTask(),
-      },
     })
+
+    // Miao-Yunzai 会重建 super({ task })，需在 super() 后保留完整任务对象。
+    this.task = {
+      name: "zmd-plugin活动提醒",
+      cron: String(cfg.activity?.cron || "0 */15 * * * *"),
+      fnc: () => this.runActivityReminderTask(),
+    }
   }
 
   getCmdPrefixHint() {

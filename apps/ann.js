@@ -43,12 +43,14 @@ export class ann extends plugin {
         { reg: "^#?(?:终末地|zmd)取消订阅公告$", fnc: "unsub" },
         { reg: "^#?(?:终末地|zmd)(?:清理公告缓存|公告清理缓存)$", fnc: "clearCache", permission: "master" },
       ],
-      task: {
-        name: "zmd-plugin公告推送",
-        cron: String(cfg.ann?.cron || "0 */15 * * * *"),
-        fnc: runAnnPushTask,
-      },
     })
+
+    // Miao-Yunzai 会重建 super({ task })，需在 super() 后保留完整任务对象。
+    this.task = {
+      name: "zmd-plugin公告推送",
+      cron: String(cfg.ann?.cron || "0 */15 * * * *"),
+      fnc: runAnnPushTask,
+    }
   }
 
   async list() {

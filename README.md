@@ -445,6 +445,7 @@ friendApi:
 | `friendApi.unifiedBaseUrl` | 统一后端地址 |
 | `friendApi.unifiedBearer` / `friendApi.unifiedApiKey` / `friendApi.unifiedFrameworkToken` / `friendApi.unifiedAnonymousToken` | 统一后端鉴权（可选） |
 | `activity.enableTask` / `activity.cron` / `activity.listDays` / `activity.remindBeforeHours` | 终末地活动日历与提醒配置 |
+| `autoSign.*` | 终末地自动签到任务配置 |
 | `fz.autoSign.*` | 明日方舟自动签到任务配置 |
 
 修改配置后建议重启机器人。

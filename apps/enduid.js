@@ -427,12 +427,18 @@ let autoSignRunning = false
 
 async function runAutoSignAll() {
   if (!cfg.autoSign?.enableTask) return
-  if (autoSignRunning) return
+  if (autoSignRunning) {
+    logger.warn(`[${PLUGIN_ID}] 自动签到跳过：已有任务正在执行`)
+    return
+  }
   autoSignRunning = true
 
   try {
     const users = await listAutoSignUsers()
-    if (!users.length) return
+    if (!users.length) {
+      logger.info(`[${PLUGIN_ID}] 自动签到跳过：没有已开启的用户`)
+      return
+    }
 
     const concurrency = Math.max(1, Number(cfg.autoSign?.concurrency) || 3)
     const minInterval = Math.max(0, Number(cfg.autoSign?.minIntervalSec) || 0)
@@ -442,25 +448,27 @@ async function runAutoSignAll() {
 
     async function runOne(userId) {
       const { account } = await getActiveAccount(userId)
-      if (!account?.cred || !account?.uid) return `${userId}: 未绑定`
+      if (!account?.cred || !account?.uid) return { status: "skip", text: `${userId}: 未绑定` }
 
       try {
         const res = await attendance(account.cred, account.uid)
         if (!res) {
           await recordFail(1)
-          return `${userId}: 请求失败`
+          return { status: "fail", text: `${userId}: 请求失败` }
         }
-        if (isAlreadySigned(res)) return `${userId}: ☑️ 已签 ${account.nickname || account.uid}`
+        if (isAlreadySigned(res)) {
+          return { status: "signed", text: `${userId}: ☑️ 已签 ${account.nickname || account.uid}` }
+        }
         if (res.code === 0) {
           await recordSuccess(1)
-          return `${userId}: ✅ ${account.nickname || account.uid}`
+          return { status: "success", text: `${userId}: ✅ ${account.nickname || account.uid}` }
         }
 
         await recordFail(1)
-        return `${userId}: ❌ ${account.nickname || account.uid} ${res.message || res.code}`
+        return { status: "fail", text: `${userId}: ❌ ${account.nickname || account.uid} ${res.message || res.code}` }
       } catch (err) {
         await recordFail(1)
-        return `${userId}: 异常 ${err?.message || err}`
+        return { status: "fail", text: `${userId}: 异常 ${err?.message || err}` }
       }
     }
 
@@ -475,10 +483,26 @@ async function runAutoSignAll() {
       }
     }
 
+    const count = status => results.filter(item => item.status === status).length
+    const success = count("success")
+    const signed = count("signed")
+    const fail = count("fail")
+    const skip = count("skip")
+    logger.info(`[${PLUGIN_ID}] 自动签到完成：成功 ${success} | 已签 ${signed} | 失败 ${fail} | 跳过 ${skip}`)
+    if (fail || skip) {
+      const details = results
+        .filter(item => item.status === "fail" || item.status === "skip")
+        .map(item => item.text)
+        .join(" | ")
+      logger.warn(`[${PLUGIN_ID}] 自动签到异常明细：${details}`)
+    }
+
     const notify = String(cfg.autoSign?.notifyUserId || "").trim()
     if (notify) {
       try {
-        await Bot.pickFriend(notify).sendMsg([`${GAME_TITLE} 自动签到结果：`, ...results].join("\n"))
+        await Bot.pickFriend(notify).sendMsg(
+          [`${GAME_TITLE} 自动签到结果：`, ...results.map(item => item.text)].join("\n"),
+        )
       } catch (err) {
         logger.error(`[${PLUGIN_ID}] 自动签到推送失败`, err)
       }
@@ -547,12 +571,14 @@ export class enduid extends plugin {
         { reg: "^#?(?:终末地|zmd)(?:环境|env)$", fnc: "env" },
         { reg: "^#?(?:终末地|zmd)(?:上传背景图|新增背景图)(?:\\s*.*)?$", fnc: "uploadBackground", permission: "master" },
       ],
-      task: {
-        name: `${PLUGIN_ID}自动签到`,
-        cron: String(cfg.autoSign?.cron || "0 5 4 * * *"),
-        fnc: runAutoSignAll,
-      },
     })
+
+    // Miao-Yunzai 会重建 super({ task })，需在 super() 后保留完整任务对象。
+    this.task = {
+      name: `${PLUGIN_ID}自动签到`,
+      cron: String(cfg.autoSign?.cron || "0 5 4 * * *"),
+      fnc: runAutoSignAll,
+    }
   }
 
   async help() {
