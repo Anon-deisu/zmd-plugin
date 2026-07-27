@@ -52,12 +52,45 @@ const U8_TOKEN_BY_UID_URL = "https://binding-api-account-prod.hypergryph.com/acc
 
 const EF_CHAR_URL = "https://ef-webview.hypergryph.com/api/record/char"
 const EF_WEAPON_URL = "https://ef-webview.hypergryph.com/api/record/weapon"
+const EF_CONTENT_URL = "https://ef-webview.hypergryph.com/api/content"
+const CONTENT_REQUEST_TIMEOUT_MS = 8000
+const RECORD_REQUEST_TIMEOUT_MS = 20000
+const WIKI_REQUEST_TIMEOUT_MS = 8000
+const IMAGE_REQUEST_TIMEOUT_MS = 15000
 
 const CHARACTER_POOL_TYPES = [
   "E_CharacterGachaPoolType_Special",
   "E_CharacterGachaPoolType_Beginner",
   "E_CharacterGachaPoolType_Standard",
+  "E_CharacterGachaPoolType_Joint",
 ]
+
+const CHARACTER_POOL_TYPE_SPECIAL = "E_CharacterGachaPoolType_Special"
+const CHARACTER_POOL_TYPE_BEGINNER = "E_CharacterGachaPoolType_Beginner"
+const CHARACTER_POOL_TYPE_STANDARD = "E_CharacterGachaPoolType_Standard"
+const CHARACTER_POOL_TYPE_JOINT = "E_CharacterGachaPoolType_Joint"
+
+// 已结束卡池的 content 接口会返回 404；这份稳定 ID 表用于首次升级时补齐历史记录。
+const KNOWN_CHAR_POOL_FEATURED_IDS = Object.freeze({
+  special_1_0_1: ["chr_0016_laevat"],
+  special_1_0_2: ["chr_0017_yvonne"],
+  special_1_0_3: ["chr_0013_aglina"],
+  special_1_1_1: ["chr_0027_tangtang"],
+  special_1_1_2: ["chr_0028_wulfa"],
+  special_1_2_1: ["chr_0030_zhuangfy"],
+  joint_1_2_2: ["chr_0029_pograni", "chr_0013_aglina", "chr_0016_laevat", "chr_0025_ardelia"],
+  special_1_3_1: ["chr_0031_mifu"],
+  special_1_3_2: ["chr_0033_camille"],
+  special_1_4_1: ["chr_0032_lizhiyan"],
+})
+
+const contentPoolTypeMap = Object.freeze({
+  special: CHARACTER_POOL_TYPE_SPECIAL,
+  newbie: CHARACTER_POOL_TYPE_BEGINNER,
+  normal: CHARACTER_POOL_TYPE_STANDARD,
+  extra: CHARACTER_POOL_TYPE_JOINT,
+})
+const poolMetadataRuntimeCache = new Map()
 
 // 保留历史 key 命名空间：避免老用户数据迁移困难。
 const KEY_USERS = "Yz:EndUID:Users"
@@ -86,9 +119,40 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+async function fetchWithTimeout(url, options, timeoutMs, readResponse) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const resp = await fetch(url, { ...options, signal: controller.signal })
+    return await readResponse(resp)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function withPromiseTimeout(promise, timeoutMs, message) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function safeInt(value, def = 0) {
   const n = Number.parseInt(`${value ?? ""}`, 10)
   return Number.isFinite(n) ? n : def
+}
+
+function isPullRecord(record) {
+  return !!record && typeof record === "object" && String(record.kind || "") !== "gift_intel_book"
+}
+
+function filterPullRecords(records) {
+  return (Array.isArray(records) ? records : []).filter(isPullRecord)
 }
 
 function sortTsSeqDesc(a, b) {
@@ -176,16 +240,15 @@ async function downloadImageBuffer(url, { referer = "" } = {}) {
   }
   if (referer) headers.Referer = referer
 
-  const resp = await fetch(u, { method: "GET", headers })
-  if (!resp.ok) return null
-
-  const buf = Buffer.from(await resp.arrayBuffer())
-  if (!buf.length) return null
-
-  return {
-    buf,
-    ext: detectImageExt(u, resp.headers.get("content-type") || ""),
-  }
+  return await fetchWithTimeout(u, { method: "GET", headers }, IMAGE_REQUEST_TIMEOUT_MS, async resp => {
+    if (!resp.ok) return null
+    const buf = Buffer.from(await resp.arrayBuffer())
+    if (!buf.length) return null
+    return {
+      buf,
+      ext: detectImageExt(u, resp.headers.get("content-type") || ""),
+    }
+  })
 }
 
 async function ensureLocalCharIcon(charId, url) {
@@ -341,16 +404,51 @@ function markRecordsWithSourcePoolType(records, sourcePoolType) {
   })
 }
 
+function mergeRecordFields(base, incoming) {
+  const merged = { ...base }
+  for (const [key, value] of Object.entries(incoming || {})) {
+    if (value === undefined || value === null || value === "") continue
+    merged[key] = value
+  }
+  return merged
+}
+
 function mergeRecords(existing, newRecords) {
-  const existingSeq = new Set((existing || []).map(getItemKey).filter(Boolean))
-  const merged = Array.isArray(existing) ? existing.slice() : []
+  const merged = []
+  const indexByKey = new Map()
+  for (const record of filterPullRecords(existing)) {
+    const key = getStableRecordKey(record)
+    if (key && indexByKey.has(key)) {
+      const existingIndex = indexByKey.get(key)
+      const current = merged[existingIndex]
+      merged[existingIndex] = safeInt(record?.rarity) >= safeInt(current?.rarity)
+        ? mergeRecordFields(current, record)
+        : mergeRecordFields(record, current)
+      continue
+    }
+    if (key) indexByKey.set(key, merged.length)
+    merged.push(record)
+  }
   let newCount = 0
 
-  for (const r of newRecords || []) {
-    const id = getItemKey(r)
-    if (!id) continue
-    if (existingSeq.has(id)) continue
-    existingSeq.add(id)
+  for (const r of filterPullRecords(newRecords)) {
+    const id = getStableRecordKey(r)
+    if (!id) {
+      merged.push(r)
+      newCount++
+      continue
+    }
+
+    const existingIndex = indexByKey.get(id)
+    if (existingIndex != null) {
+      const current = merged[existingIndex]
+      merged[existingIndex] = safeInt(r?.rarity) >= safeInt(current?.rarity)
+        ? mergeRecordFields(current, r)
+        : mergeRecordFields(r, current)
+      continue
+    }
+
+    indexByKey.set(id, merged.length)
     merged.push(r)
     newCount++
   }
@@ -379,7 +477,7 @@ function normalizeNameKey(raw) {
 
 function isLimitedPoolId(poolId) {
   const id = String(poolId || "").trim().toLowerCase()
-  return id.startsWith("special") || id.startsWith("limited")
+  return id.startsWith("special") || id.startsWith("limited") || id.startsWith("joint")
 }
 
 function isLimitedCharPool({ poolId, title } = {}) {
@@ -389,29 +487,221 @@ function isLimitedCharPool({ poolId, title } = {}) {
   return /特许寻访/.test(t) || /限定/.test(t)
 }
 
-function buildBigPityCountByItemKey(poolItems, { upTargetKey = "", max = 120 } = {}) {
-  const sorted = (poolItems || []).slice().sort(sortTsSeqAsc)
+function matchFeaturedItem(item, { featuredIds = [], featuredNames = [], featuredNamesComplete = null } = {}) {
+  const itemId = String(item?.charId || item?.weaponId || "").trim()
+  const idSet = new Set((featuredIds || []).map(value => String(value || "").trim()).filter(Boolean))
+  if (itemId && idSet.size) return idSet.has(itemId)
+
+  const itemName = normalizeNameKey(item?.charName || item?.weaponName)
+  const nameSet = new Set((featuredNames || []).map(normalizeNameKey).filter(Boolean))
+  if (itemName && nameSet.size) {
+    if (nameSet.has(itemName)) return true
+    const namesAreComplete = featuredNamesComplete == null
+      ? (!idSet.size || nameSet.size >= idSet.size)
+      : !!featuredNamesComplete
+    if (namesAreComplete) return false
+  }
+  return null
+}
+
+function analyzeFeaturedGuarantee(
+  poolItems,
+  { featuredIds = [], featuredNames = [], featuredNamesComplete = null, firstLimit = 120 } = {},
+) {
+  const sorted = filterPullRecords(poolItems).slice().sort(sortTsSeqAsc)
   const out = new Map()
 
-  let pity = 0
+  let paidCount = 0
+  let hasObtainedFeatured = false
+  let hasUnknownFeaturedHistory = false
+  let countIsReliable = true
   for (const item of sorted) {
-    if (item?.isFree) continue
+    const isSix = safeInt(item?.rarity) === 6
+    const featuredMatch = isSix
+      ? matchFeaturedItem(item, { featuredIds, featuredNames, featuredNamesComplete })
+      : null
+    const isFeatured = featuredMatch === true
+    const isFeaturedKnown = featuredMatch !== null
 
-    pity += 1
-    if (safeInt(item?.rarity) !== 6) continue
+    if (item?.isFree) {
+      if (isSix) {
+        out.set(item, {
+          paidCount,
+          isFeatured,
+          isFeaturedKnown,
+          isBigGuarantee: false,
+        })
+      }
+      continue
+    }
 
-    const key = getItemKey(item)
-    out.set(key, pity)
+    if (!getStableRecordKey(item)) countIsReliable = false
+    paidCount += 1
+    if (!isSix) continue
 
-    const nameKey = normalizeNameKey(item?.charName || item?.weaponName)
-    const isUpByName = !!(upTargetKey && nameKey && nameKey === upTargetKey)
-    const isHardBig = pity >= max
-
-    // Limited pool big pity does NOT reset on non-UP 6*, but resets on UP or hard ceiling.
-    if (isUpByName || isHardBig) pity = 0
+    const isBigGuarantee = !!(
+      isFeatured &&
+      !hasObtainedFeatured &&
+      !hasUnknownFeaturedHistory &&
+      countIsReliable &&
+      paidCount === firstLimit
+    )
+    out.set(item, { paidCount, isFeatured, isFeaturedKnown, isBigGuarantee })
+    if (isFeatured) hasObtainedFeatured = true
+    else if (!isFeaturedKnown) hasUnknownFeaturedHistory = true
   }
 
   return out
+}
+
+function inferCharacterSourcePoolType(record) {
+  const source = String(record?.sourcePoolType || "").trim()
+  if (CHARACTER_POOL_TYPES.includes(source)) return source
+
+  const poolId = String(record?.poolId || "").trim().toLowerCase()
+  if (!poolId) return ""
+  if (poolId === "standard" || poolId.startsWith("standard_")) return CHARACTER_POOL_TYPE_STANDARD
+  if (poolId === "beginner" || poolId.startsWith("beginner_")) return CHARACTER_POOL_TYPE_BEGINNER
+  if (poolId.startsWith("joint_")) return CHARACTER_POOL_TYPE_JOINT
+  return CHARACTER_POOL_TYPE_SPECIAL
+}
+
+function mergeFullCharacterRecords(existing, fetchedByPoolType) {
+  const fetchedMap = fetchedByPoolType instanceof Map ? fetchedByPoolType : new Map()
+  const fetchedRecords = [...fetchedMap.values()].flatMap(filterPullRecords)
+  return mergeRecords(existing, fetchedRecords).merged
+}
+
+function mapContentPoolMetadata(candidate, responseData) {
+  const pool = responseData?.code === 0 ? responseData?.data?.pool : null
+  if (!pool || typeof pool !== "object") return null
+
+  const allItems = Array.isArray(pool.all) ? pool.all : []
+  const sixItems = allItems.filter(item => safeInt(item?.rarity) === 6)
+  const rawUpNames = String(pool.up6_name || "")
+    .split(/[、,，/]/)
+    .map(name => name.trim())
+    .filter(Boolean)
+  const upNameKeys = new Set(rawUpNames.map(normalizeNameKey))
+  const featuredItems = pool.pool_type === "extra"
+    ? sixItems
+    : sixItems.filter(item => upNameKeys.has(normalizeNameKey(item?.name)))
+
+  return {
+    poolId: String(candidate?.poolId || "").trim(),
+    poolName: String(pool.pool_name || candidate?.poolName || "").trim(),
+    sourcePoolType: contentPoolTypeMap[String(pool.pool_type || "")] || String(candidate?.sourcePoolType || "").trim(),
+    featuredIds: featuredItems.map(item => String(item?.id || "").trim()).filter(Boolean),
+    featuredNames: featuredItems.length
+      ? featuredItems.map(item => String(item?.name || "").trim()).filter(Boolean)
+      : rawUpNames,
+    source: "content",
+  }
+}
+
+function hasFeaturedMetadata(metadata) {
+  return !!(
+    (Array.isArray(metadata?.featuredIds) && metadata.featuredIds.length) ||
+    (Array.isArray(metadata?.featuredNames) && metadata.featuredNames.length)
+  )
+}
+
+function hasTrustedPoolMetadata(metadata, poolId) {
+  const source = String(metadata?.source || "")
+  return (
+    hasFeaturedMetadata(metadata) &&
+    String(metadata?.poolId || "").trim() === String(poolId || "").trim() &&
+    (source === "content" || source === "known")
+  )
+}
+
+function getKnownPoolMetadata(candidate) {
+  const poolId = String(candidate?.poolId || "").trim()
+  const featuredIds = KNOWN_CHAR_POOL_FEATURED_IDS[poolId]
+  if (!Array.isArray(featuredIds) || !featuredIds.length) return null
+  return {
+    poolId,
+    poolName: String(candidate?.poolName || "").trim(),
+    sourcePoolType: String(candidate?.sourcePoolType || inferCharacterSourcePoolType(candidate)).trim(),
+    featuredIds: featuredIds.slice(),
+    featuredNames: [],
+    source: "known",
+  }
+}
+
+async function fetchContentPoolMetadata(candidate, { serverId = "1" } = {}) {
+  const poolId = String(candidate?.poolId || "").trim()
+  if (!poolId) return null
+
+  const query = new URLSearchParams({
+    lang: "zh-cn",
+    pool_id: poolId,
+    server_id: String(serverId || "1"),
+  }).toString()
+  return await fetchWithTimeout(
+    `${EF_CONTENT_URL}?${query}`,
+    { method: "GET" },
+    CONTENT_REQUEST_TIMEOUT_MS,
+    async resp => {
+      if (!resp.ok) return null
+      return mapContentPoolMetadata(candidate, await readJsonSafe(resp))
+    },
+  )
+}
+
+async function resolveCharacterPoolMetadata(records, { existingMetadata = {}, serverId = "1" } = {}) {
+  const stored = existingMetadata && typeof existingMetadata === "object" && !Array.isArray(existingMetadata)
+    ? existingMetadata
+    : {}
+  const result = {}
+  const candidates = new Map()
+
+  for (const record of filterPullRecords(records)) {
+    const poolId = String(record?.poolId || "").trim()
+    if (!poolId || candidates.has(poolId)) continue
+    const sourcePoolType = inferCharacterSourcePoolType(record)
+    if (sourcePoolType !== CHARACTER_POOL_TYPE_SPECIAL && sourcePoolType !== CHARACTER_POOL_TYPE_JOINT) continue
+    candidates.set(poolId, {
+      poolId,
+      poolName: String(record?.poolName || "").trim(),
+      sourcePoolType,
+    })
+  }
+
+  const unresolved = []
+  for (const candidate of candidates.values()) {
+    const persisted = stored[candidate.poolId]
+    if (hasTrustedPoolMetadata(persisted, candidate.poolId)) {
+      result[candidate.poolId] = persisted
+      poolMetadataRuntimeCache.set(candidate.poolId, persisted)
+      if (persisted.source === "content") continue
+    }
+
+    const runtime = poolMetadataRuntimeCache.get(candidate.poolId)
+    if (hasTrustedPoolMetadata(runtime, candidate.poolId)) {
+      result[candidate.poolId] = runtime
+      if (runtime.source === "content") continue
+    }
+
+    unresolved.push(candidate)
+  }
+
+  const resolved = await Promise.all(unresolved.map(async candidate => {
+    let metadata = null
+    try {
+      metadata = await fetchContentPoolMetadata(candidate, { serverId })
+    } catch {}
+    if (!hasFeaturedMetadata(metadata)) metadata = getKnownPoolMetadata(candidate)
+    return [candidate.poolId, metadata]
+  }))
+
+  for (const [poolId, metadata] of resolved) {
+    if (!hasTrustedPoolMetadata(metadata, poolId)) continue
+    result[poolId] = metadata
+    poolMetadataRuntimeCache.set(poolId, metadata)
+  }
+
+  return result
 }
 
 function scoreBannerMatch(poolTitle, bannerName) {
@@ -511,11 +801,27 @@ function buildFreeTenPullLogs(poolItems, { minCount = 10, maxGroups = 2 } = {}) 
   return out.slice(0, max)
 }
 
+function combineGachaLogs(sixLogs, freeLogs) {
+  return [...(sixLogs || []), ...(freeLogs || [])].sort((a, b) => {
+    const tsDiff = safeInt(b?.ts) - safeInt(a?.ts)
+    if (tsDiff !== 0) return tsDiff
+    return String(a?.logType || "").localeCompare(String(b?.logType || ""))
+  })
+}
+
 function getItemKey(item) {
   const poolId = String(item?.poolId || "")
   const gachaTs = String(item?.gachaTs ?? "")
   const seqId = String(item?.seqId ?? "")
   if (!poolId && !gachaTs && !seqId) return ""
+  return `${poolId}|${gachaTs}|${seqId}`
+}
+
+function getStableRecordKey(item) {
+  const poolId = String(item?.poolId || "").trim()
+  const gachaTs = String(item?.gachaTs ?? "").trim()
+  const seqId = String(item?.seqId ?? "").trim()
+  if (!poolId || !gachaTs || !seqId) return ""
   return `${poolId}|${gachaTs}|${seqId}`
 }
 
@@ -537,7 +843,7 @@ function buildSixCostByPoolId(items, { excludeFree = true } = {}) {
     for (const item of sorted) {
       sinceLastSix += 1
       if (safeInt(item?.rarity) !== 6) continue
-      cost.set(getItemKey(item), sinceLastSix)
+      cost.set(item, sinceLastSix)
       sinceLastSix = 0
     }
   }
@@ -574,7 +880,7 @@ function buildPoolsByPoolId(items, { kind = "char", hasFree = true } = {}) {
       timeRange: formatYmdRangeFromMs(poolItems),
       pity: getPityFromRecent(poolItems, { excludeFree: true }),
       stats: buildPoolStats(poolItems, { hasFree }),
-      sixList: poolItems.filter(i => safeInt(i?.rarity) === 6).sort(sortTsSeqDesc).slice(0, 24),
+      sixList: poolItems.filter(i => safeInt(i?.rarity) === 6).sort(sortTsSeqDesc),
       latestTs,
     })
   }
@@ -740,6 +1046,19 @@ async function getU8Token({ recordUid, roleId, hgToken, deviceToken, userId }) {
   return { u8Token, recordUid: uid }
 }
 
+function assertRecordPageProgress(list, hasMore, currentSeqId = 0) {
+  if (hasMore && !list.length) {
+    throw new Error("抽卡记录分页返回空列表，已取消本次更新以保护本地记录")
+  }
+  if (!hasMore) return 0
+
+  const nextSeqId = safeInt(list[list.length - 1]?.seqId)
+  if (nextSeqId <= 0 || (safeInt(currentSeqId) > 0 && nextSeqId >= safeInt(currentSeqId))) {
+    throw new Error("抽卡记录分页游标未推进，已取消本次更新以保护本地记录")
+  }
+  return nextSeqId
+}
+
 async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {}, existingMaxSeqId = 0 } = {}) {
   // 终末地抽卡记录为分页接口：使用 seq_id 向后翻页，直到 hasMore=false。
   // 若传入 existingMaxSeqId，则遇到 <= max 的记录即提前停止（增量更新）。
@@ -758,13 +1077,18 @@ async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {}, 
 
     const query = new URLSearchParams(params).toString()
     const fullUrl = `${url}?${query}`
-    const resp = await fetch(fullUrl, { method: "GET" })
-    if (!resp.ok) throw new Error(`抽卡记录请求失败：HTTP ${resp.status}`)
+    const response = await fetchWithTimeout(fullUrl, { method: "GET" }, RECORD_REQUEST_TIMEOUT_MS, async resp => ({
+      ok: resp.ok,
+      status: resp.status,
+      json: await readJsonSafe(resp),
+    }))
+    if (!response.ok) throw new Error(`抽卡记录请求失败：HTTP ${response.status}`)
 
-    const json = await readJsonSafe(resp)
+    const json = response.json
     if (!json || json.code !== 0 || !json.data) throw new Error(`抽卡记录请求失败：${json?.msg || "未知错误"}`)
 
     const list = Array.isArray(json.data?.list) ? json.data.list : []
+    const nextSeqId = assertRecordPageProgress(list, !!json.data?.hasMore, seqId)
 
     let shouldStop = false
     for (const r of list) {
@@ -773,17 +1097,16 @@ async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {}, 
         shouldStop = true
         break
       }
-      records.push(r)
+      if (isPullRecord(r)) records.push(r)
     }
 
     if (shouldStop) break
 
     hasMore = !!json.data?.hasMore
-    if (list.length) seqId = safeInt(list[list.length - 1]?.seqId)
-    else break
+    if (hasMore) seqId = nextSeqId
 
     // 小延迟：避免短时间内高频请求触发风控。
-    await sleep(100)
+    if (hasMore) await sleep(100)
   }
 
   return records
@@ -804,9 +1127,10 @@ async function loadGachaExport(roleId) {
     }
     const data = safeJsonParse(text, null)
     if (!data || typeof data !== "object") return null
-    if (!Array.isArray(data.charList)) data.charList = []
-    if (!Array.isArray(data.weaponList)) data.weaponList = []
+    data.charList = filterPullRecords(data.charList)
+    data.weaponList = filterPullRecords(data.weaponList)
     if (!data.info || typeof data.info !== "object") data.info = {}
+    if (!data.poolMetadata || typeof data.poolMetadata !== "object" || Array.isArray(data.poolMetadata)) data.poolMetadata = {}
 
     // Best-effort: migrate legacy cache to the new bot-level data dir.
     if (fromLegacy) saveGachaExport(rid, data).catch(() => {})
@@ -916,6 +1240,7 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
     }
 
     const fetchedChar = []
+    const fetchedCharByPoolType = new Map()
     for (const poolType of CHARACTER_POOL_TYPES) {
       const list = await fetchEfRecords(EF_CHAR_URL, {
         u8Token,
@@ -923,7 +1248,9 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
         extraParams: { pool_type: poolType },
         existingMaxSeqId: charMaxSeqIdByPoolType.get(poolType) || 0,
       })
-      fetchedChar.push(...markRecordsWithSourcePoolType(list, poolType))
+      const marked = markRecordsWithSourcePoolType(list, poolType)
+      fetchedCharByPoolType.set(poolType, marked)
+      fetchedChar.push(...marked)
     }
 
     const fetchedWeapon = await fetchEfRecords(EF_WEAPON_URL, {
@@ -932,11 +1259,13 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
       existingMaxSeqId: weaponMaxSeqId,
     })
 
-    // 全量重拉时直接以接口返回为准覆盖本地；增量更新时只合并新增 seqId。
-    const baseChar = full ? [] : existingChar
-    const baseWeapon = full ? [] : existingWeapon
-    const { merged: mergedChar, newCount: mergedCharCount } = mergeRecords(baseChar, fetchedChar)
-    const { merged: mergedWeapon, newCount: mergedWeaponCount } = mergeRecords(baseWeapon, fetchedWeapon)
+    // 抽卡历史是追加型数据：全量重拉用于补缺和修正同键字段，不删除接口未返回的旧记录。
+    const mergedCharResult = full
+      ? { merged: mergeFullCharacterRecords(existingChar, fetchedCharByPoolType), newCount: 0 }
+      : mergeRecords(existingChar, fetchedChar)
+    const mergedWeaponResult = mergeRecords(existingWeapon, fetchedWeapon)
+    const { merged: mergedChar, newCount: mergedCharCount } = mergedCharResult
+    const { merged: mergedWeapon, newCount: mergedWeaponCount } = mergedWeaponResult
 
     if (full && (existingChar.length > 0 || existingWeapon.length > 0) && !mergedChar.length && !mergedWeapon.length) {
       return { ok: false, message: "[终末地] 全量重拉返回空数据，已取消覆盖本地记录（请稍后重试）" }
@@ -946,6 +1275,11 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
     const newWeaponCount = full ? Math.max(0, mergedWeapon.length - existingWeapon.length) : mergedWeaponCount
     const deltaChar = mergedChar.length - existingChar.length
     const deltaWeapon = mergedWeapon.length - existingWeapon.length
+
+    const poolMetadata = await resolveCharacterPoolMetadata(mergedChar, {
+      existingMetadata: existing?.poolMetadata,
+      serverId,
+    })
 
     const exportData = {
       info: {
@@ -957,6 +1291,7 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
       },
       charList: mergedChar,
       weaponList: mergedWeapon,
+      poolMetadata,
     }
 
     const filePath = await saveGachaExport(roleId, exportData)
@@ -1223,13 +1558,23 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
   const totalSix = totalCharSix + totalWeaponSix
 
   const exportTime = exportData?.info?.exportTimestamp ? formatYmdHmFromMs(exportData.info.exportTimestamp * 1000) : "-"
+  const poolMetadata = await resolveCharacterPoolMetadata(showChar ? charList : [], {
+    existingMetadata: exportData?.poolMetadata,
+    serverId: String(account?.serverId || "1").trim() || "1",
+  })
 
-  // Only fetch wiki homepage list when we may need limited UP inference.
+  // 官方卡池元数据优先；Wiki 仅补充未能从 content 接口或历史 ID 表解析的卡池。
   let wikiListData = null
   try {
-    const needUpDetect = pools.some(p => p.kind === "char" && isLimitedCharPool({ poolId: p.poolId, title: p.title }))
+    const needUpDetect = pools.some(p => {
+      if (p.kind !== "char" || !isLimitedCharPool({ poolId: p.poolId, title: p.title })) return false
+      const metadata = poolMetadata[String(p.poolId || "").trim()]
+      return !Array.isArray(metadata?.featuredNames) || !metadata.featuredNames.length
+    })
     const needCharIconFallback = pools.some(p => p.kind === "char" && Array.isArray(p?.sixList) && p.sixList.length > 0)
-    if (needUpDetect || needCharIconFallback) wikiListData = await ensureListData()
+    if (needUpDetect || needCharIconFallback) {
+      wikiListData = await withPromiseTimeout(ensureListData(), WIKI_REQUEST_TIMEOUT_MS, "Wiki 卡池数据请求超时")
+    }
   } catch {}
 
   if (wikiListData) appendCharIconMapFromWikiList(wikiListData, charIconByName)
@@ -1242,42 +1587,58 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
 
     const isLimited = p.kind === "char" && isLimitedCharPool({ poolId: p.poolId, title: p.title })
 
-    // Best-effort UP detection for limited pools, based on wiki homepage banner list.
-    let upTargetKey = ""
-    if (isLimited) {
+    const metadata = poolMetadata[String(p.poolId || "").trim()]
+    let featuredIds = Array.isArray(metadata?.featuredIds) ? metadata.featuredIds : []
+    let featuredNames = Array.isArray(metadata?.featuredNames) ? metadata.featuredNames : []
+    if (featuredIds.length && aliasMap && typeof aliasMap === "object") {
+      const featuredIdSet = new Set(featuredIds.map(id => String(id || "").trim()).filter(Boolean))
+      const namesFromAlias = []
+      for (const [aliasKey, entryRaw] of Object.entries(aliasMap)) {
+        const entry = entryRaw && typeof entryRaw === "object" ? entryRaw : {}
+        if (!featuredIdSet.has(String(entry.id || "").trim())) continue
+        const name = String(entry.name || aliasKey || "").trim()
+        if (name) namesFromAlias.push(name)
+      }
+      featuredNames = [...new Set([...featuredNames, ...namesFromAlias])]
+    }
+    if (isLimited && !featuredNames.length) {
       try {
         if (wikiListData) {
-          upTargetKey = pickUpTargetKeyFromWiki(wikiListData, { poolTitle: p.title, latestTs: p.latestTs })
+          const wikiTarget = pickUpTargetKeyFromWiki(wikiListData, { poolTitle: p.title, latestTs: p.latestTs })
+          if (wikiTarget) featuredNames = [wikiTarget]
         }
       } catch {}
     }
 
-    const hasLimitedUp = !!(isLimited && upTargetKey)
+    const hasLimitedUp = !!(isLimited && (featuredIds.length || featuredNames.length))
+    const featuredNamesComplete = featuredNames.length > 0 && (
+      !featuredIds.length ||
+      featuredIds.length === 1 ||
+      (metadata?.source === "content" && featuredNames.length >= featuredIds.length)
+    )
     const max = 80
 
     const cost = p.kind === "weapon" ? weaponSixCost : charSixCost
 
-    const bigByKey = hasLimitedUp ? buildBigPityCountByItemKey(poolItems, { upTargetKey, max: 120 }) : null
+    const guaranteeByItem = hasLimitedUp
+      ? analyzeFeaturedGuarantee(poolItems, { featuredIds, featuredNames, featuredNamesComplete, firstLimit: 120 })
+      : null
 
     const sixLogs = (p.sixList || []).map(item => {
       const name = String(item?.charName || item?.weaponName || "未知")
-      const key = getItemKey(item)
       const isFree = !!item?.isFree
-      const smallCount = Math.max(1, safeInt(cost.get(key), 1))
+      const smallCount = Math.max(1, safeInt(cost.get(item), 1))
 
-      const bigCount = hasLimitedUp && bigByKey ? safeInt(bigByKey.get(key), 0) : 0
       const count = smallCount
-
-      const nameKey = normalizeNameKey(item?.charName || item?.weaponName)
-      const isUpByName = !!(hasLimitedUp && upTargetKey && nameKey && nameKey === upTargetKey)
-      const isHardBig = !!(hasLimitedUp && bigCount >= 120)
-      const isUp = isUpByName || isHardBig
+      const guarantee = guaranteeByItem?.get(item)
+      const isUp = !!guarantee?.isFeatured
+      const isUpKnown = !!guarantee?.isFeaturedKnown
 
       const tags = []
       // Tags are shown outside the bar to avoid clipping.
-      if (hasLimitedUp && safeInt(item?.rarity) === 6 && !isFree && !isUp) tags.push("歪")
+      if (hasLimitedUp && isUpKnown && safeInt(item?.rarity) === 6 && !isFree && !isUp) tags.push("歪")
       if (!isFree && safeInt(item?.rarity) === 6 && smallCount >= 80) tags.push("保底")
-      if (hasLimitedUp && safeInt(item?.rarity) === 6 && !isFree && isUp && bigCount >= 120) tags.push("大保底")
+      if (hasLimitedUp && guarantee?.isBigGuarantee) tags.push("大保底")
       const tag = tags.length ? tags.join("+") : ""
 
       let tagCls = ""
@@ -1306,7 +1667,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
         iconPath,
         charId,
         weaponId,
-        cls: isFree ? "wai" : hasLimitedUp && safeInt(item?.rarity) === 6 && !isUp ? "wai" : "up",
+        cls: isFree ? "free" : isLimited ? (hasLimitedUp && isUpKnown ? (isUp ? "up" : "wai") : "unknown") : "up",
         rarity: safeInt(item?.rarity),
         isFree,
         tag,
@@ -1315,23 +1676,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
     })
 
     const freeTenLogs = p.kind === "char" ? buildFreeTenPullLogs(poolItems, { minCount: 10, maxGroups: 2 }) : []
-
-    let logs = [...sixLogs, ...freeTenLogs]
-    logs.sort((a, b) => safeInt(b?.ts) - safeInt(a?.ts))
-
-    // Keep the visual list size stable (pending row is added separately).
-    const logLimit = 24
-    if (logs.length > logLimit) logs = logs.slice(0, logLimit)
-
-    // Ensure the latest free-ten summary is visible even if it's older than the last N 6*s.
-    if (freeTenLogs.length) {
-      const latestFree = freeTenLogs[0]
-      const hasFree = logs.some(it => it?.logType === "free" && safeInt(it?.ts) === safeInt(latestFree?.ts))
-      if (!hasFree && logs.length) {
-        logs[logs.length - 1] = latestFree
-        logs.sort((a, b) => safeInt(b?.ts) - safeInt(a?.ts))
-      }
-    }
+    const logs = combineGachaLogs(sixLogs, freeTenLogs)
 
     const pityCount = safeInt(p.pity, 0)
     if (pityCount > 0) {
@@ -1360,15 +1705,23 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
     }
   })
 
+  const remoteIconLogsByCharId = new Map()
   for (const pool of poolsView) {
     for (const log of Array.isArray(pool?.logs) ? pool.logs : []) {
       if (log?.iconPath || !log?.icon || !log?.charId) continue
-      try {
-        const localIconPath = await ensureLocalCharIcon(log.charId, log.icon)
-        if (localIconPath) log.iconPath = localIconPath
-      } catch {}
+      if (!remoteIconLogsByCharId.has(log.charId)) remoteIconLogsByCharId.set(log.charId, [])
+      remoteIconLogsByCharId.get(log.charId).push(log)
     }
   }
+
+  await Promise.all([...remoteIconLogsByCharId.values()].map(async logs => {
+    try {
+      const localIconPath = await ensureLocalCharIcon(logs[0].charId, logs[0].icon)
+      if (localIconPath) {
+        for (const log of logs) log.iconPath = localIconPath
+      }
+    } catch {}
+  }))
 
   const localFace = avatarUserId ? await ensureLocalQqFace(avatarUserId) : ""
 
@@ -1525,46 +1878,60 @@ export async function deleteGachaLogsForUser(userId) {
 }
 
 export async function importGachaLogsFromJsonForUser(userId, rawJson) {
-  const { ok, message, roleId } = await requireActiveRoleId(userId)
+  const { account, ok, message, roleId } = await requireActiveRoleId(userId)
   if (!ok) return { ok: false, message }
 
   const incoming = safeJsonParse(String(rawJson || ""), null)
   if (!incoming) return { ok: false, message: "[终末地] JSON 解析失败：内容不是合法 JSON" }
 
   const normalized = normalizeImportedData(incoming)
-  const importChar = Array.isArray(normalized.charList) ? normalized.charList : []
-  const importWeapon = Array.isArray(normalized.weaponList) ? normalized.weaponList : []
+  const importChar = filterPullRecords(normalized.charList)
+  const importWeapon = filterPullRecords(normalized.weaponList)
   if (!importChar.length && !importWeapon.length) return { ok: false, message: "[终末地] JSON 中没有可导入的抽卡记录" }
 
-  const existing = await loadGachaExport(roleId)
-  const existingChar = Array.isArray(existing?.charList) ? existing.charList : []
-  const existingWeapon = Array.isArray(existing?.weaponList) ? existing.weaponList : []
+  if (running.has(roleId)) return { ok: false, message: "[终末地] 抽卡记录正在刷新/导入中，请稍后再试（请勿重复触发）" }
+  running.add(roleId)
 
-  const { merged: mergedChar, newCount: newCharCount } = mergeRecords(existingChar, importChar)
-  const { merged: mergedWeapon, newCount: newWeaponCount } = mergeRecords(existingWeapon, importWeapon)
+  try {
+    const existing = await loadGachaExport(roleId)
+    const existingChar = Array.isArray(existing?.charList) ? existing.charList : []
+    const existingWeapon = Array.isArray(existing?.weaponList) ? existing.weaponList : []
 
-  const exportData = {
-    info: {
-      uid: roleId,
-      lang: "zh-cn",
-      timezone: 8,
-      exportTimestamp: Math.floor(Date.now() / 1000),
-      version: "v1.0",
-    },
-    charList: mergedChar,
-    weaponList: mergedWeapon,
-  }
+    const { merged: mergedChar, newCount: newCharCount } = mergeRecords(existingChar, importChar)
+    const { merged: mergedWeapon, newCount: newWeaponCount } = mergeRecords(existingWeapon, importWeapon)
+    const poolMetadata = await resolveCharacterPoolMetadata(mergedChar, {
+      existingMetadata: existing?.poolMetadata,
+      serverId: String(account?.serverId || "1").trim() || "1",
+    })
 
-  const filePath = await saveGachaExport(roleId, exportData)
+    const exportData = {
+      info: {
+        uid: roleId,
+        lang: "zh-cn",
+        timezone: 8,
+        exportTimestamp: Math.floor(Date.now() / 1000),
+        version: "v1.0",
+      },
+      charList: mergedChar,
+      weaponList: mergedWeapon,
+      poolMetadata,
+    }
 
-  return {
-    ok: true,
-    roleId,
-    filePath,
-    newCharCount,
-    newWeaponCount,
-    totalChar: mergedChar.length,
-    totalWeapon: mergedWeapon.length,
+    const filePath = await saveGachaExport(roleId, exportData)
+
+    return {
+      ok: true,
+      roleId,
+      filePath,
+      newCharCount,
+      newWeaponCount,
+      totalChar: mergedChar.length,
+      totalWeapon: mergedWeapon.length,
+    }
+  } catch (err) {
+    return { ok: false, message: `[终末地] 导入抽卡记录失败：${err?.message || err}` }
+  } finally {
+    running.delete(roleId)
   }
 }
 
@@ -1608,6 +1975,10 @@ export async function importGachaLogsFromU8TokenForUser(userId, u8TokenInput) {
 
     const { merged: mergedChar, newCount: newCharCount } = mergeRecords(existingChar, fetchedChar)
     const { merged: mergedWeapon, newCount: newWeaponCount } = mergeRecords(existingWeapon, fetchedWeapon)
+    const poolMetadata = await resolveCharacterPoolMetadata(mergedChar, {
+      existingMetadata: existing?.poolMetadata,
+      serverId,
+    })
 
     const exportData = {
       info: {
@@ -1619,6 +1990,7 @@ export async function importGachaLogsFromU8TokenForUser(userId, u8TokenInput) {
       },
       charList: mergedChar,
       weaponList: mergedWeapon,
+      poolMetadata,
     }
 
     const filePath = await saveGachaExport(roleId, exportData)
@@ -1640,3 +2012,15 @@ export async function importGachaLogsFromU8TokenForUser(userId, u8TokenInput) {
     running.delete(roleId)
   }
 }
+
+export const __gachalogTest = Object.freeze({
+  analyzeFeaturedGuarantee,
+  assertRecordPageProgress,
+  buildPoolsByPoolId,
+  combineGachaLogs,
+  filterPullRecords,
+  getItemKey,
+  mapContentPoolMetadata,
+  mergeFullCharacterRecords,
+  mergeRecords,
+})
