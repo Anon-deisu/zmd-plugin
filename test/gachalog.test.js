@@ -36,6 +36,41 @@ test("大保底只标记未提前获得 UP 时的第 120 个付费抽", () => {
   assert.equal(result.get(pulls[239]).isBigGuarantee, false)
 })
 
+test("十连内六星按整批结算且第 120 抽后不残留垫抽", () => {
+  const pulls = []
+  let offSix = null
+  let upSix = null
+
+  for (let batch = 1; batch <= 13; batch++) {
+    const isFree = batch === 4
+    for (let index = 0; index < 10; index++) {
+      const seq = (batch - 1) * 10 + index + 1
+      let overrides = { gachaTs: batch * 1000, isFree }
+      if (batch === 6 && index === 3) {
+        overrides = { ...overrides, charId: "char_off", charName: "常驻六星", rarity: 6 }
+      } else if (batch === 13 && index === 1) {
+        overrides = { ...overrides, charId: "char_up", charName: "当期UP", rarity: 6 }
+      }
+      const pull = makePull(seq, overrides)
+      pulls.push(pull)
+      if (batch === 6 && index === 3) offSix = pull
+      if (batch === 13 && index === 1) upSix = pull
+    }
+  }
+
+  const guarantee = __gachalogTest.analyzeFeaturedGuarantee(pulls, {
+    featuredIds: ["char_up"],
+  })
+  const costs = __gachalogTest.buildSixCostByPoolId(pulls)
+  const [pool] = __gachalogTest.buildPoolsByPoolId(pulls)
+
+  assert.equal(costs.get(offSix), 50)
+  assert.equal(costs.get(upSix), 70)
+  assert.equal(pool.pity, 0)
+  assert.equal(guarantee.get(upSix).paidCount, 120)
+  assert.equal(guarantee.get(upSix).isBigGuarantee, true)
+})
+
 test("提前获得 UP 后第 120 抽不再误判大保底", () => {
   const pulls = Array.from({ length: 120 }, (_, index) => makePull(index + 1))
   pulls[29] = makePull(30, { charId: "char_up", charName: "当期UP", rarity: 6 })

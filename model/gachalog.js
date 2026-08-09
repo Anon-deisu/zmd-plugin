@@ -170,6 +170,26 @@ function sortTsSeqAsc(a, b) {
   return safeInt(a?.seqId) - safeInt(b?.seqId)
 }
 
+function groupPullRecordsByBatch(items, { excludeFree = false } = {}) {
+  const sorted = filterPullRecords(items)
+    .filter(item => !excludeFree || !item?.isFree)
+    .slice()
+    .sort(sortTsSeqAsc)
+  const batches = []
+
+  for (const item of sorted) {
+    const gachaTs = String(item?.gachaTs ?? "").trim()
+    const last = batches.at(-1)
+    if (gachaTs && last?.gachaTs === gachaTs) {
+      last.items.push(item)
+    } else {
+      batches.push({ gachaTs, items: [item] })
+    }
+  }
+
+  return batches
+}
+
 function formatYmdHmFromMs(ms) {
   const t = Number(ms) || 0
   if (t <= 0) return "-"
@@ -453,12 +473,12 @@ function mergeRecords(existing, newRecords) {
 }
 
 function getPityFromRecent(items, { excludeFree = true } = {}) {
-  const sorted = (items || []).slice().sort(sortTsSeqDesc)
+  const batches = groupPullRecordsByBatch(items, { excludeFree })
   let pity = 0
-  for (const item of sorted) {
-    if (excludeFree && item?.isFree) continue
-    if (safeInt(item?.rarity) === 6) break
-    pity++
+  for (let index = batches.length - 1; index >= 0; index--) {
+    const batchItems = batches[index].items
+    if (batchItems.some(item => safeInt(item?.rarity) === 6)) break
+    pity += batchItems.length
   }
   return pity
 }
@@ -503,47 +523,65 @@ function analyzeFeaturedGuarantee(
   poolItems,
   { featuredIds = [], featuredNames = [], featuredNamesComplete = null, firstLimit = 120 } = {},
 ) {
-  const sorted = filterPullRecords(poolItems).slice().sort(sortTsSeqAsc)
+  const batches = groupPullRecordsByBatch(poolItems)
   const out = new Map()
 
   let paidCount = 0
   let hasObtainedFeatured = false
   let hasUnknownFeaturedHistory = false
   let countIsReliable = true
-  for (const item of sorted) {
-    const isSix = safeInt(item?.rarity) === 6
-    const featuredMatch = isSix
-      ? matchFeaturedItem(item, { featuredIds, featuredNames, featuredNamesComplete })
-      : null
-    const isFeatured = featuredMatch === true
-    const isFeaturedKnown = featuredMatch !== null
+  for (const batch of batches) {
+    const paidItems = batch.items.filter(item => !item?.isFree)
+    const freeSixItems = batch.items.filter(item => item?.isFree && safeInt(item?.rarity) === 6)
 
-    if (item?.isFree) {
-      if (isSix) {
-        out.set(item, {
-          paidCount,
-          isFeatured,
-          isFeaturedKnown,
-          isBigGuarantee: false,
-        })
-      }
-      continue
+    for (const item of freeSixItems) {
+      const featuredMatch = matchFeaturedItem(item, { featuredIds, featuredNames, featuredNamesComplete })
+      out.set(item, {
+        paidCount,
+        isFeatured: featuredMatch === true,
+        isFeaturedKnown: featuredMatch !== null,
+        isBigGuarantee: false,
+      })
     }
 
-    if (!getStableRecordKey(item)) countIsReliable = false
-    paidCount += 1
-    if (!isSix) continue
+    if (!paidItems.length) continue
+    if (paidItems.some(item => !getStableRecordKey(item))) countIsReliable = false
+    paidCount += paidItems.length
 
-    const isBigGuarantee = !!(
-      isFeatured &&
+    const sixStates = paidItems
+      .filter(item => safeInt(item?.rarity) === 6)
+      .map(item => {
+        const featuredMatch = matchFeaturedItem(item, { featuredIds, featuredNames, featuredNamesComplete })
+        return {
+          item,
+          isFeatured: featuredMatch === true,
+          isFeaturedKnown: featuredMatch !== null,
+        }
+      })
+    const bigGuaranteeItem = (
       !hasObtainedFeatured &&
       !hasUnknownFeaturedHistory &&
       countIsReliable &&
       paidCount === firstLimit
     )
-    out.set(item, { paidCount, isFeatured, isFeaturedKnown, isBigGuarantee })
-    if (isFeatured) hasObtainedFeatured = true
-    else if (!isFeaturedKnown) hasUnknownFeaturedHistory = true
+      ? sixStates.find(state => state.isFeatured)?.item
+      : null
+
+    for (const state of sixStates) {
+      const { item, isFeatured, isFeaturedKnown } = state
+      out.set(item, {
+        paidCount,
+        isFeatured,
+        isFeaturedKnown,
+        isBigGuarantee: item === bigGuaranteeItem,
+      })
+    }
+
+    if (sixStates.some(state => state.isFeatured)) {
+      hasObtainedFeatured = true
+    } else if (sixStates.some(state => !state.isFeaturedKnown)) {
+      hasUnknownFeaturedHistory = true
+    }
   }
 
   return out
@@ -845,14 +883,27 @@ function buildSixCostByPoolId(items, { excludeFree = true } = {}) {
 
   const cost = new Map()
   for (const poolItems of byPool.values()) {
-    const filtered = excludeFree ? poolItems.filter(i => !i?.isFree) : poolItems.slice()
-    const sorted = filtered.slice().sort(sortTsSeqAsc)
-
+    const batches = groupPullRecordsByBatch(poolItems, { excludeFree })
     let sinceLastSix = 0
-    for (const item of sorted) {
-      sinceLastSix += 1
-      if (safeInt(item?.rarity) !== 6) continue
-      cost.set(item, sinceLastSix)
+    for (const batch of batches) {
+      const sixIndexes = []
+      for (let index = 0; index < batch.items.length; index++) {
+        if (safeInt(batch.items[index]?.rarity) === 6) sixIndexes.push(index)
+      }
+      if (!sixIndexes.length) {
+        sinceLastSix += batch.items.length
+        continue
+      }
+
+      let consumed = 0
+      for (const index of sixIndexes) {
+        const item = batch.items[index]
+        cost.set(item, sinceLastSix + index + 1 - consumed)
+        sinceLastSix = 0
+        consumed = index + 1
+      }
+      const lastSix = batch.items[sixIndexes.at(-1)]
+      cost.set(lastSix, cost.get(lastSix) + batch.items.length - consumed)
       sinceLastSix = 0
     }
   }
@@ -2039,6 +2090,7 @@ export const __gachalogTest = Object.freeze({
   analyzeFeaturedGuarantee,
   assertRecordPageProgress,
   buildPoolsByPoolId,
+  buildSixCostByPoolId,
   combineGachaLogs,
   filterPullRecords,
   getItemKey,
