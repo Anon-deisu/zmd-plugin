@@ -57,6 +57,7 @@ const CONTENT_REQUEST_TIMEOUT_MS = 8000
 const RECORD_REQUEST_TIMEOUT_MS = 20000
 const WIKI_REQUEST_TIMEOUT_MS = 8000
 const IMAGE_REQUEST_TIMEOUT_MS = 15000
+const CONTENT_METADATA_VERSION = 2
 
 const CHARACTER_POOL_TYPES = [
   "E_CharacterGachaPoolType_Special",
@@ -203,20 +204,12 @@ function getQqAvatarUrl(userId) {
   return `https://q.qlogo.cn/headimg_dl?dst_uin=${encodeURIComponent(id)}&spec=640`
 }
 
-function detectImageExt(url = "", contentType = "") {
-  const ct = String(contentType || "").trim().toLowerCase()
-  if (ct.includes("image/png")) return ".png"
-  if (ct.includes("image/webp")) return ".webp"
-  if (ct.includes("image/jpeg") || ct.includes("image/jpg")) return ".jpg"
-
-  try {
-    const pathname = new URL(String(url || "").trim()).pathname.toLowerCase()
-    for (const ext of LOCAL_IMAGE_EXTS) {
-      if (pathname.endsWith(ext)) return ext
-    }
-  } catch {}
-
-  return ".png"
+function detectImageBufferExt(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) return ""
+  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return ".png"
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return ".jpg"
+  if (buf.subarray(0, 4).toString("ascii") === "RIFF" && buf.subarray(8, 12).toString("ascii") === "WEBP") return ".webp"
+  return ""
 }
 
 function findExistingLocalImageRel(baseName) {
@@ -244,9 +237,11 @@ async function downloadImageBuffer(url, { referer = "" } = {}) {
     if (!resp.ok) return null
     const buf = Buffer.from(await resp.arrayBuffer())
     if (!buf.length) return null
+    const ext = detectImageBufferExt(buf)
+    if (!ext) return null
     return {
       buf,
-      ext: detectImageExt(u, resp.headers.get("content-type") || ""),
+      ext,
     }
   })
 }
@@ -586,6 +581,14 @@ function mapContentPoolMetadata(candidate, responseData) {
   const featuredItems = pool.pool_type === "extra"
     ? sixItems
     : sixItems.filter(item => upNameKeys.has(normalizeNameKey(item?.name)))
+  const allItemsByName = new Map(allItems.map(item => [normalizeNameKey(item?.name), item]))
+  const charImagesById = {}
+  for (const rotate of Array.isArray(pool.rotate_list) ? pool.rotate_list : []) {
+    const image = pickCharAvatarUrl(rotate)
+    const item = allItemsByName.get(normalizeNameKey(rotate?.name))
+    const charId = String(item?.id || "").trim()
+    if (charId && image) charImagesById[charId] = image
+  }
 
   return {
     poolId: String(candidate?.poolId || "").trim(),
@@ -595,7 +598,9 @@ function mapContentPoolMetadata(candidate, responseData) {
     featuredNames: featuredItems.length
       ? featuredItems.map(item => String(item?.name || "").trim()).filter(Boolean)
       : rawUpNames,
+    charImagesById,
     source: "content",
+    metadataVersion: CONTENT_METADATA_VERSION,
   }
 }
 
@@ -613,6 +618,10 @@ function hasTrustedPoolMetadata(metadata, poolId) {
     String(metadata?.poolId || "").trim() === String(poolId || "").trim() &&
     (source === "content" || source === "known")
   )
+}
+
+function hasCurrentContentMetadata(metadata) {
+  return metadata?.source === "content" && safeInt(metadata?.metadataVersion) >= CONTENT_METADATA_VERSION
 }
 
 function getKnownPoolMetadata(candidate) {
@@ -674,13 +683,13 @@ async function resolveCharacterPoolMetadata(records, { existingMetadata = {}, se
     if (hasTrustedPoolMetadata(persisted, candidate.poolId)) {
       result[candidate.poolId] = persisted
       poolMetadataRuntimeCache.set(candidate.poolId, persisted)
-      if (persisted.source === "content") continue
+      if (hasCurrentContentMetadata(persisted)) continue
     }
 
     const runtime = poolMetadataRuntimeCache.get(candidate.poolId)
     if (hasTrustedPoolMetadata(runtime, candidate.poolId)) {
       result[candidate.poolId] = runtime
-      if (runtime.source === "content") continue
+      if (hasCurrentContentMetadata(runtime)) continue
     }
 
     unresolved.push(candidate)
@@ -691,7 +700,7 @@ async function resolveCharacterPoolMetadata(records, { existingMetadata = {}, se
     try {
       metadata = await fetchContentPoolMetadata(candidate, { serverId })
     } catch {}
-    if (!hasFeaturedMetadata(metadata)) metadata = getKnownPoolMetadata(candidate)
+    if (!hasFeaturedMetadata(metadata)) metadata = result[candidate.poolId] || getKnownPoolMetadata(candidate)
     return [candidate.poolId, metadata]
   }))
 
@@ -911,6 +920,7 @@ function getIconFromNameMap(map, name) {
 function pickCharAvatarUrl(raw = {}) {
   const obj = raw && typeof raw === "object" ? raw : {}
   const candidates = [
+    obj.image,
     obj.url,
     obj.avatarRtUrl,
     obj.avatar_rt_url,
@@ -1489,6 +1499,9 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
       const name = String(entry.name || key || "").trim()
       setIconMapByName(charIconByName, name, url)
       setIconMapByName(charIconByName, key, url)
+      for (const alias of Array.isArray(entry.alias) ? entry.alias : []) {
+        setIconMapByName(charIconByName, alias, url)
+      }
     }
   }
 
@@ -1562,6 +1575,13 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
     existingMetadata: exportData?.poolMetadata,
     serverId: String(account?.serverId || "1").trim() || "1",
   })
+  for (const metadata of Object.values(poolMetadata)) {
+    for (const [charId, image] of Object.entries(metadata?.charImagesById || {})) {
+      const id = String(charId || "").trim()
+      const url = String(image || "").trim()
+      if (id && url) charIconById.set(id, url)
+    }
+  }
 
   // 官方卡池元数据优先；Wiki 仅补充未能从 content 接口或历史 ID 表解析的卡池。
   let wikiListData = null
@@ -1719,8 +1739,10 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
       const localIconPath = await ensureLocalCharIcon(logs[0].charId, logs[0].icon)
       if (localIconPath) {
         for (const log of logs) log.iconPath = localIconPath
+        return
       }
     } catch {}
+    for (const log of logs) log.icon = ""
   }))
 
   const localFace = avatarUserId ? await ensureLocalQqFace(avatarUserId) : ""
@@ -2023,4 +2045,5 @@ export const __gachalogTest = Object.freeze({
   mapContentPoolMetadata,
   mergeFullCharacterRecords,
   mergeRecords,
+  pickCharAvatarUrl,
 })

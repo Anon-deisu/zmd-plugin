@@ -49,7 +49,7 @@ export async function render(tplPath, params = {}, { scale = MIN_RENDER_SCALE, q
     defaultLayout,
     skinLayout,
     pageGotoParams: {
-      waitUntil: "networkidle0",
+      waitUntil: "networkidle2",
     },
     sys: {
       scale: scaleAttr(scale),

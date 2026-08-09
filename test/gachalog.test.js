@@ -140,6 +140,9 @@ test("官方卡池内容使用稳定角色 ID 解析 UP", () => {
             { id: "char_up", name: "当期UP", rarity: 6 },
             { id: "char_off", name: "常驻六星", rarity: 6 },
           ],
+          rotate_list: [
+            { name: "当期UP", image: "https://example.com/char_up.png" },
+          ],
         },
       },
     },
@@ -148,6 +151,17 @@ test("官方卡池内容使用稳定角色 ID 解析 UP", () => {
   assert.deepEqual(metadata.featuredIds, ["char_up"])
   assert.deepEqual(metadata.featuredNames, ["当期UP"])
   assert.equal(metadata.poolName, "测试特许寻访")
+  assert.deepEqual(metadata.charImagesById, {
+    char_up: "https://example.com/char_up.png",
+  })
+  assert.equal(metadata.metadataVersion, 2)
+})
+
+test("角色图片解析支持 content 的通用 image 字段", () => {
+  assert.equal(
+    __gachalogTest.pickCharAvatarUrl({ image: "https://example.com/new-char.png" }),
+    "https://example.com/new-char.png",
+  )
 })
 
 test("同键的新接口记录可以修正旧记录的六星字段", () => {
