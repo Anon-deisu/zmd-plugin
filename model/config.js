@@ -164,6 +164,8 @@ const DEFAULT_CONFIG = {
   security: {
     /** 群聊不回显 cred/token */
     noShowSecretInGroup: true,
+    /** 是否允许在群聊中发起扫码登录并发送二维码 */
+    allowQrLoginInGroup: false,
   },
 }
 

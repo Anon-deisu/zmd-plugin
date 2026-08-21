@@ -86,6 +86,10 @@ function looksLikeObjectString(text) {
   return /^\[object\s+[^\]]+\]$/.test(String(text || "").trim())
 }
 
+function isGroupQrLoginEnabled() {
+  return cfg.security?.allowQrLoginInGroup === true
+}
+
 async function replyPrivate(e, msg) {
   if (!msg) return false
   try {
@@ -559,6 +563,11 @@ export class enduid extends plugin {
         },
 
         { reg: "^#?(?:终末地|zmd)(?:登录|login|dl)$", fnc: "login" },
+        {
+          reg: "^#?(?:终末地|zmd)(?:群聊扫码登录\\s*(?:开启|关闭|on|off)?|(?:开启|关闭)群聊扫码登录)$",
+          fnc: "setGroupQrLogin",
+          permission: "master",
+        },
         { reg: "^#?(?:终末地|zmd)(?:绑定|bind)\\s*(.+)$", fnc: "bind" },
         { reg: "^#?(?:终末地|zmd)(?:查看|我的|list)$", fnc: "list" },
         { reg: "^#?(?:终末地|zmd)(?:切换|switch)\\s*(.*)$", fnc: "switch" },
@@ -587,13 +596,15 @@ export class enduid extends plugin {
     const fz = "#fz"
 
     const isMaster = !!e.isMaster
+    const groupQrLoginEnabled = isGroupQrLoginEnabled()
+    const qrLoginDesc = groupQrLoginEnabled ? "支持群聊扫码，二维码发送到当前群" : "仅私聊扫码登录并绑定"
 
     const sections = [
       {
         title: "账号",
         desc: "绑定/切换终末地账号",
         items: [
-          { name: "登录", cmd: `${p}登录`, desc: "私聊扫码登录并绑定" },
+          { name: "登录", cmd: `${p}登录`, desc: qrLoginDesc },
           { name: "绑定", cmd: `${p}绑定<cred|token>`, desc: "私聊，支持 cred= / token= 前缀" },
           { name: "绑定UID", cmd: `${p}绑定<UID>`, desc: "无需登录，仅用于角色面板查询" },
           { name: "查看", cmd: `${p}查看`, desc: "查看已绑定账号" },
@@ -690,6 +701,12 @@ export class enduid extends plugin {
           { name: "匿名Token", cmd: "#统一后端匿名token <token>", desc: "设置统一后端匿名令牌", badge: "MASTER" },
           { name: "本地地址", cmd: "#本地数据地址 <url>", desc: "设置本地 Friend API 地址", badge: "MASTER" },
           { name: "本地Token", cmd: "#本地数据token <token>", desc: "设置本地 Friend API Bearer", badge: "MASTER" },
+          {
+            name: "群聊扫码",
+            cmd: `${p}群聊扫码登录 开启 / ${p}群聊扫码登录 关闭`,
+            desc: `${groupQrLoginEnabled ? "当前已开启" : "当前已关闭"}，仅主人可设置`,
+            badge: "MASTER",
+          },
           { name: "反馈", cmd: "#反馈", desc: "联系作者 1493218095 / 加群 1084459856" },
           { name: "上传背景图", cmd: `${p}上传背景图`, desc: "上传到本地图库（随机渲染背景）", badge: "MASTER" },
         ],
@@ -747,7 +764,7 @@ export class enduid extends plugin {
       `${GAME_TITLE} 帮助`,
       ``,
       `【账号】`,
-      `- ${p}登录（私聊扫码登录并绑定）`,
+      `- ${p}登录（${qrLoginDesc}）`,
       `- ${p}绑定<cred|token>（私聊）`,
       `- ${p}绑定<UID>（无需登录，仅用于角色面板查询）`,
       `- ${p}查看`,
@@ -815,6 +832,7 @@ export class enduid extends plugin {
       isMaster ? `- #统一后端apikey <key>（仅 master，建议私聊）` : "",
       isMaster ? `- #统一后端frameworktoken <token>（仅 master，建议私聊）` : "",
       isMaster ? `- #统一后端匿名token <token>（仅 master，建议私聊）` : "",
+      isMaster ? `- ${p}群聊扫码登录 开启/关闭（仅 master）` : "",
       `- #反馈（联系作者 1493218095 / 加群 1084459856）`,
       isMaster ? `- ${p}上传背景图（仅 master）` : "",
     ]
@@ -1473,7 +1491,10 @@ export class enduid extends plugin {
 
   async login() {
     const e = this.e
-    if (!e.isPrivate) {
+    const groupQrLogin = Boolean(e.isGroup && isGroupQrLoginEnabled())
+    const replyLogin = (msg, quote = false) => (groupQrLogin ? e.reply(msg, quote) : replyPrivate(e, msg))
+
+    if (!e.isPrivate && !groupQrLogin) {
       await e.reply(`${GAME_TITLE} 为了安全，请私聊使用：${cfg.cmd?.prefix || "#zmd"}登录`, true)
       return true
     }
@@ -1486,19 +1507,19 @@ export class enduid extends plugin {
       scanUrl = typeof scan?.scanUrl === "string" ? scan.scanUrl.trim() : ""
     } catch (err) {
       const msg = logThrowable("获取二维码参数失败", err)
-      await replyPrivate(e, `${GAME_TITLE} 获取二维码失败：${msg}`)
+      await replyLogin(`${GAME_TITLE} 获取二维码失败：${msg}`)
       return true
     }
     if (!scanId || looksLikeObjectString(scanId)) {
       const msg = `扫码接口返回 scanId 异常：${scanId || "empty"}`
       logger.error(`${GAME_TITLE} ${msg}`)
-      await replyPrivate(e, `${GAME_TITLE} 获取二维码失败：${msg}`)
+      await replyLogin(`${GAME_TITLE} 获取二维码失败：${msg}`)
       return true
     }
     if (looksLikeObjectString(scanUrl)) {
       const msg = `扫码接口返回 scanUrl 异常：${scanUrl}`
       logger.error(`${GAME_TITLE} ${msg}`)
-      await replyPrivate(e, `${GAME_TITLE} 获取二维码失败：${msg}`)
+      await replyLogin(`${GAME_TITLE} 获取二维码失败：${msg}`)
       return true
     }
 
@@ -1507,8 +1528,7 @@ export class enduid extends plugin {
     let qrPath = ""
     try {
       qrPath = await makeQrPng(scanUrl)
-      await replyPrivate(
-        e,
+      await replyLogin(
         [
           `${GAME_TITLE} 请使用森空岛 App 扫码登录（二维码有效期约 1 分钟）`,
           segment.image(qrPath),
@@ -1516,7 +1536,7 @@ export class enduid extends plugin {
       )
     } catch (err) {
       const msg = logThrowable("生成二维码失败", err)
-      await replyPrivate(e, `${GAME_TITLE} 生成二维码失败：${msg}\n你也可以改用：${cfg.cmd?.prefix || "#zmd"}绑定 <cred>`)
+      await replyLogin(`${GAME_TITLE} 生成二维码失败：${msg}\n你也可以改用：${cfg.cmd?.prefix || "#zmd"}绑定 <cred>`)
       return true
     } finally {
       if (qrPath) {
@@ -1533,12 +1553,12 @@ export class enduid extends plugin {
       }
     } catch (err) {
       const msg = logThrowable("扫码状态查询失败", err)
-      await replyPrivate(e, `${GAME_TITLE} 扫码状态查询失败：${msg}`)
+      await replyLogin(`${GAME_TITLE} 扫码状态查询失败：${msg}`)
       return true
     }
 
     if (!scanCode) {
-      await replyPrivate(e, `${GAME_TITLE} 二维码已超时，请重新获取并扫码`)
+      await replyLogin(`${GAME_TITLE} 二维码已超时，请重新获取并扫码`)
       return true
     }
 
@@ -1550,11 +1570,11 @@ export class enduid extends plugin {
       if (tokenRes && typeof tokenRes === "object") deviceToken = String(tokenRes.deviceToken || "")
     } catch (err) {
       const msg = logThrowable("获取 token 失败", err)
-      await replyPrivate(e, `${GAME_TITLE} 获取 token 失败：${msg}`)
+      await replyLogin(`${GAME_TITLE} 获取 token 失败：${msg}`)
       return true
     }
     if (!token) {
-      await replyPrivate(e, `${GAME_TITLE} 获取 token 失败，请重试`)
+      await replyLogin(`${GAME_TITLE} 获取 token 失败，请重试`)
       return true
     }
 
@@ -1563,26 +1583,26 @@ export class enduid extends plugin {
       info = await getCredInfoByToken(token, { userId: e.user_id })
     } catch (err) {
       const msg = logThrowable("获取 cred 失败", err)
-      await replyPrivate(e, `${GAME_TITLE} 获取 cred 失败：${msg}`)
+      await replyLogin(`${GAME_TITLE} 获取 cred 失败：${msg}`)
       return true
     }
     if (info?.error === "405") {
-      await replyPrivate(e, `${GAME_TITLE} 当前服务无法使用 token 登录，请尝试使用 cred`)
+      await replyLogin(`${GAME_TITLE} 当前服务无法使用 token 登录，请尝试使用 cred`)
       return true
     }
     if (info?.error) {
       const detail = String(info.message || info.error || "未知错误")
       logger.error(`${GAME_TITLE} 获取 cred 失败：${detail}`)
-      await replyPrivate(e, `${GAME_TITLE} 获取 cred 失败：${detail}`)
+      await replyLogin(`${GAME_TITLE} 获取 cred 失败：${detail}`)
       return true
     }
     if (!info?.cred) {
-      await replyPrivate(e, `${GAME_TITLE} 获取 cred 失败，请重试`)
+      await replyLogin(`${GAME_TITLE} 获取 cred 失败，请重试`)
       return true
     }
 
     const bindRes = await bindByCred(info.cred, e.user_id, { usedToken: token, sklandUserId: info.sklandUserId, deviceToken })
-    await replyPrivate(e, bindRes.message)
+    await replyLogin(bindRes.message)
 
     if (bindRes.ok && cfg.gacha?.autoSyncAfterLogin) {
       setTimeout(async () => {
@@ -1592,8 +1612,7 @@ export class enduid extends plugin {
           const added = (Number(res.newCharCount) || 0) + (Number(res.newWeaponCount) || 0)
           if (added <= 0) return
 
-          await replyPrivate(
-            e,
+          await replyLogin(
             [
               `${GAME_TITLE} 登录后已自动同步抽卡记录`,
               `新增角色记录：${res.newCharCount} 条`,
@@ -1603,6 +1622,38 @@ export class enduid extends plugin {
         } catch {}
       }, 50)
     }
+    return true
+  }
+
+  async setGroupQrLogin() {
+    const e = this.e
+    const message = String(e.msg || "").trim()
+    let action = message
+      .replace(/^#?(?:终末地|zmd)群聊扫码登录\s*/i, "")
+      .trim()
+    if (action === message) {
+      action = message.replace(/^#?(?:终末地|zmd)(开启|关闭)群聊扫码登录$/i, "$1").trim()
+    }
+
+    if (!action) {
+      await e.reply(
+        `${GAME_TITLE} 群聊扫码登录当前${isGroupQrLoginEnabled() ? "已开启" : "已关闭"}\n用法：${cfg.cmd?.prefix || "#zmd"}群聊扫码登录 开启/关闭`,
+        true,
+      )
+      return true
+    }
+
+    const enabled = /^(?:开启|on)$/i.test(action)
+    const disabled = /^(?:关闭|off)$/i.test(action)
+    if (!enabled && !disabled) {
+      await e.reply(`${GAME_TITLE} 用法：${cfg.cmd?.prefix || "#zmd"}群聊扫码登录 开启/关闭`, true)
+      return true
+    }
+
+    cfg.security ??= {}
+    cfg.security.allowQrLoginInGroup = enabled
+    await configSave?.()
+    await e.reply(`${GAME_TITLE} 群聊扫码登录已${enabled ? "开启" : "关闭"}`, true)
     return true
   }
 
