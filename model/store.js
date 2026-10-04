@@ -519,6 +519,18 @@ export async function listAutoSignUsers() {
   }
 }
 
+export async function listBoundAccounts(userIds) {
+  const targets = []
+  for (const userId of userIds) {
+    const { accounts } = await getUserData(userId)
+    // Keep empty users in batch receipts as skipped entries.
+    for (const account of accounts.length ? accounts : [null]) {
+      targets.push({ userId: String(userId), account })
+    }
+  }
+  return targets
+}
+
 export async function listBoundUsers() {
   const out = new Set()
   try {

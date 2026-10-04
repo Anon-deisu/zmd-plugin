@@ -89,7 +89,7 @@ function buildRefreshDoneLines({ res, isOther, targetId, full = false }) {
     res.roleId ? `UID：${res.roleId}` : "",
     `角色记录：${res.totalChar} 条（变化 ${dCharText}）`,
     `武器记录：${res.totalWeapon} 条（变化 ${dWeaponText}）`,
-    `提示：该指令会覆盖本地缓存，用于修复池子统计异常/历史记录错乱`,
+    `提示：已按记录键补齐并修正历史，保留接口未返回的旧记录`,
   ]
 }
 

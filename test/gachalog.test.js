@@ -1,7 +1,13 @@
 import assert from "node:assert/strict"
-import test from "node:test"
+import fs from "node:fs/promises"
+import path from "node:path"
+import test, { mock } from "node:test"
 
-import { __gachalogTest } from "../model/gachalog.js"
+const fetchMock = mock.fn(() => assert.fail("Unexpected network request"))
+mock.module("node-fetch", { defaultExport: fetchMock })
+mock.module("../model/config.js", { defaultExport: { skland: { ua: { ios: "test-agent" } } } })
+
+const { __gachalogTest, updateGachaLogsForUser, importGachaLogsFromU8TokenForUser } = await import("../model/gachalog.js")
 
 const SPECIAL = "E_CharacterGachaPoolType_Special"
 const JOINT = "E_CharacterGachaPoolType_Joint"
@@ -299,4 +305,111 @@ test("全量刷新按记录键补齐且不删除接口未返回的旧记录", ()
   assert.equal(merged.some(item => item.poolId === "special_test" && item.rarity === 6), true)
   assert.equal(merged.some(item => item.poolId === "joint_old"), true)
   assert.equal(merged.some(item => item.poolId === "joint_new"), true)
+})
+
+function mockGachaSync(t, { failLastPage = false } = {}) {
+  const roleId = "100000001"
+  const weaponPull = (seq, overrides = {}) => makePull(seq, { poolId: "weapon_test", ...overrides })
+  let cache = {
+    info: { uid: roleId },
+    charList: [makePull(100), makePull(70), makePull(1, { rarity: 6 })],
+    weaponList: [weaponPull(50)],
+    poolMetadata: {
+      special_test: {
+        poolId: "special_test",
+        featuredIds: ["char_100"],
+        source: "content",
+        metadataVersion: 2,
+      },
+    },
+  }
+  const account = { uid: roleId, cred: "test-cred", token: "test-token", recordUid: "test-record-uid" }
+  const previousRedis = global.redis
+  global.redis = {
+    get: async key => {
+      assert.equal(key, "Yz:EndUID:User:10001")
+      return JSON.stringify({ accounts: [account], active: 0, autoSign: false })
+    },
+  }
+  t.after(() => { global.redis = previousRedis })
+
+  t.mock.method(fs, "readFile", async file => {
+    assert.equal(path.basename(file), `${roleId}.json`)
+    return JSON.stringify(cache)
+  })
+  t.mock.method(fs, "mkdir", async dir => {
+    assert.equal(path.basename(dir), "gachalog")
+  })
+  const write = t.mock.method(fs, "writeFile", async (file, content) => {
+    assert.equal(path.basename(file), `${roleId}.json`)
+    cache = JSON.parse(content)
+  })
+  const requestedPages = []
+  fetchMock.mock.mockImplementation(async input => {
+    const url = new URL(input)
+    let data
+    if (url.pathname.endsWith("/grant") || url.pathname.endsWith("/u8_token_by_uid")) {
+      data = { status: 0, data: { token: "test-u8-token" } }
+    } else if (url.pathname.endsWith("/binding_list")) {
+      data = { status: 0, data: { list: [{ bindingList: [{ uid: account.recordUid, roles: [{ roleId }] }] }] } }
+    } else if (url.pathname === "/api/record/char") {
+      const poolType = url.searchParams.get("pool_type")
+      const cursor = url.searchParams.get("seq_id") || "0"
+      requestedPages.push(`${poolType}:${cursor}`)
+      const pages = {
+        0: { list: [makePull(120), makePull(110)], hasMore: true },
+        110: { list: [makePull(100, { rarity: 6 }), makePull(99, { rarity: 6, gachaTs: 100000 }), makePull(70)], hasMore: true },
+        70: { list: [makePull(60, { rarity: 6 })], hasMore: false },
+      }
+      if (failLastPage && poolType === SPECIAL && cursor === "70") {
+        return new Response("unavailable", { status: 503 })
+      }
+      data = { code: 0, data: poolType === SPECIAL ? pages[cursor] : { list: [], hasMore: false } }
+    } else if (url.pathname === "/api/record/weapon") {
+      data = { code: 0, data: { list: [weaponPull(50, { rarity: 6 }), weaponPull(49, { rarity: 6 })], hasMore: false } }
+    } else {
+      assert.fail(`Unexpected request: ${url.pathname}`)
+    }
+    return new Response(JSON.stringify(data))
+  })
+
+  return { getCache: () => cache, write, requestedPages }
+}
+
+for (const [label, sync] of [
+  ["普通更新", () => updateGachaLogsForUser("10001")],
+  ["全量更新", () => updateGachaLogsForUser("10001", { full: true })],
+  ["u8 token 导入", () => importGachaLogsFromU8TokenForUser("10001", "test-u8-token")],
+]) {
+  test(`${label}补齐旧游标后的出货记录并修正六星且重复同步不增重`, async t => {
+    const { getCache, requestedPages } = mockGachaSync(t)
+    const result = await sync()
+
+    assert.equal(result.ok, true, result.message)
+    assert.equal(result.newCharCount, 4)
+    assert.equal(result.newWeaponCount, 1)
+    assert.equal(getCache().charList.length, 7)
+    assert.equal(getCache().charList.find(item => item.seqId === "100").rarity, 6)
+    assert.equal(getCache().charList.filter(item => item.rarity === 6).length, 4)
+    assert.equal(getCache().weaponList.filter(item => item.rarity === 6).length, 2)
+    assert.ok(requestedPages.includes(`${SPECIAL}:70`))
+    assert.ok(requestedPages.some(page => page.startsWith(`${JOINT}:`)))
+
+    const repeated = await sync()
+    assert.equal(repeated.ok, true, repeated.message)
+    assert.equal(repeated.newCharCount, 0)
+    assert.equal(repeated.newWeaponCount, 0)
+    assert.equal(getCache().charList.length, 7)
+    assert.equal(getCache().weaponList.length, 2)
+  })
+}
+
+test("旧游标之后分页请求失败时不写入不完整缓存", async t => {
+  const { getCache, write } = mockGachaSync(t, { failLastPage: true })
+  const result = await updateGachaLogsForUser("10001")
+
+  assert.equal(result.ok, false)
+  assert.match(result.message, /HTTP 503/)
+  assert.equal(write.mock.callCount(), 0)
+  assert.equal(getCache().charList.length, 3)
 })

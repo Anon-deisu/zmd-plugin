@@ -395,20 +395,6 @@ function formatYmdRangeFromMs(items) {
   return `${start} ~ ${end}`
 }
 
-function getMaxSeqId(items) {
-  if (!Array.isArray(items) || !items.length) return 0
-  return Math.max(...items.map(i => safeInt(i?.seqId, 0)))
-}
-
-function getMaxSeqIdBySourcePoolType(items, sourcePoolType) {
-  const poolType = String(sourcePoolType || "").trim()
-  if (!poolType) return getMaxSeqId(items)
-
-  const filtered = (items || []).filter(i => String(i?.sourcePoolType || "").trim() === poolType)
-  if (!filtered.length) return 0
-  return getMaxSeqId(filtered)
-}
-
 function markRecordsWithSourcePoolType(records, sourcePoolType) {
   const poolType = String(sourcePoolType || "").trim()
   if (!poolType) return Array.isArray(records) ? records : []
@@ -1120,9 +1106,9 @@ function assertRecordPageProgress(list, hasMore, currentSeqId = 0) {
   return nextSeqId
 }
 
-async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {}, existingMaxSeqId = 0 } = {}) {
+async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {} } = {}) {
   // 终末地抽卡记录为分页接口：使用 seq_id 向后翻页，直到 hasMore=false。
-  // 若传入 existingMaxSeqId，则遇到 <= max 的记录即提前停止（增量更新）。
+  // 旧游标不能证明历史完整：迟到记录和字段修正也必须进入后续去重合并。
   let hasMore = true
   let seqId = 0
   const records = []
@@ -1151,17 +1137,9 @@ async function fetchEfRecords(url, { u8Token, serverId = "1", extraParams = {}, 
     const list = Array.isArray(json.data?.list) ? json.data.list : []
     const nextSeqId = assertRecordPageProgress(list, !!json.data?.hasMore, seqId)
 
-    let shouldStop = false
     for (const r of list) {
-      const currentSeq = safeInt(r?.seqId)
-      if (existingMaxSeqId > 0 && currentSeq > 0 && currentSeq <= existingMaxSeqId) {
-        shouldStop = true
-        break
-      }
       if (isPullRecord(r)) records.push(r)
     }
-
-    if (shouldStop) break
 
     hasMore = !!json.data?.hasMore
     if (hasMore) seqId = nextSeqId
@@ -1282,11 +1260,6 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
     const existingChar = Array.isArray(existing?.charList) ? existing.charList : []
     const existingWeapon = Array.isArray(existing?.weaponList) ? existing.weaponList : []
 
-    const charMaxSeqIdByPoolType = new Map(
-      CHARACTER_POOL_TYPES.map(poolType => [poolType, full ? 0 : getMaxSeqIdBySourcePoolType(existingChar, poolType)]),
-    )
-    const weaponMaxSeqId = full ? 0 : getMaxSeqId(existingWeapon)
-
     const { u8Token, recordUid: finalRecordUid } = await getU8Token({
       recordUid,
       roleId,
@@ -1307,7 +1280,6 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
         u8Token,
         serverId,
         extraParams: { pool_type: poolType },
-        existingMaxSeqId: charMaxSeqIdByPoolType.get(poolType) || 0,
       })
       const marked = markRecordsWithSourcePoolType(list, poolType)
       fetchedCharByPoolType.set(poolType, marked)
@@ -1317,7 +1289,6 @@ async function updateGachaLogsForAccount(userId, account, { full = false } = {})
     const fetchedWeapon = await fetchEfRecords(EF_WEAPON_URL, {
       u8Token,
       serverId,
-      existingMaxSeqId: weaponMaxSeqId,
     })
 
     // 抽卡历史是追加型数据：全量重拉用于补缺和修正同键字段，不删除接口未返回的旧记录。
@@ -2026,16 +1997,12 @@ export async function importGachaLogsFromU8TokenForUser(userId, u8TokenInput) {
     const existingChar = Array.isArray(existing?.charList) ? existing.charList : []
     const existingWeapon = Array.isArray(existing?.weaponList) ? existing.weaponList : []
 
-    const charMaxSeqIdByPoolType = new Map(CHARACTER_POOL_TYPES.map(poolType => [poolType, getMaxSeqIdBySourcePoolType(existingChar, poolType)]))
-    const weaponMaxSeqId = getMaxSeqId(existingWeapon)
-
     const fetchedChar = []
     for (const poolType of CHARACTER_POOL_TYPES) {
       const list = await fetchEfRecords(EF_CHAR_URL, {
         u8Token,
         serverId,
         extraParams: { pool_type: poolType },
-        existingMaxSeqId: charMaxSeqIdByPoolType.get(poolType) || 0,
       })
       fetchedChar.push(...markRecordsWithSourcePoolType(list, poolType))
     }
@@ -2043,7 +2010,6 @@ export async function importGachaLogsFromU8TokenForUser(userId, u8TokenInput) {
     const fetchedWeapon = await fetchEfRecords(EF_WEAPON_URL, {
       u8Token,
       serverId,
-      existingMaxSeqId: weaponMaxSeqId,
     })
 
     const { merged: mergedChar, newCount: newCharCount } = mergeRecords(existingChar, fetchedChar)

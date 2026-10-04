@@ -26,6 +26,7 @@ import {
   getActiveAccount,
   getUserData,
   listAutoSignUsers,
+  listBoundAccounts,
   listBoundUsers,
   saveUserData,
   setActiveAccount,
@@ -448,39 +449,42 @@ async function runAutoSignAll() {
     const minInterval = Math.max(0, Number(cfg.autoSign?.minIntervalSec) || 0)
     const maxInterval = Math.max(minInterval, Number(cfg.autoSign?.maxIntervalSec) || minInterval)
 
+    const targets = await listBoundAccounts(users)
     const results = []
 
-    async function runOne(userId) {
-      const { account } = await getActiveAccount(userId)
-      if (!account?.cred || !account?.uid) return { status: "skip", text: `${userId}: 未绑定` }
+    async function runOne({ userId, account }) {
+      const label = `${userId} UID:${account?.uid || "-"}`
+      if (!account?.cred || !account?.uid) {
+        return { status: "skip", text: `${label}: ${account?.uidOnly ? "仅UID绑定（不支持签到）" : "未绑定或数据不完整"}` }
+      }
 
       try {
         const res = await attendance(account.cred, account.uid)
         if (!res) {
           await recordFail(1)
-          return { status: "fail", text: `${userId}: 请求失败` }
+          return { status: "fail", text: `${label}: 请求失败` }
         }
         if (isAlreadySigned(res)) {
-          return { status: "signed", text: `${userId}: ☑️ 已签 ${account.nickname || account.uid}` }
+          return { status: "signed", text: `${label}: ☑️ 已签 ${account.nickname || account.uid}` }
         }
         if (res.code === 0) {
           await recordSuccess(1)
-          return { status: "success", text: `${userId}: ✅ ${account.nickname || account.uid}` }
+          return { status: "success", text: `${label}: ✅ ${account.nickname || account.uid}` }
         }
 
         await recordFail(1)
-        return { status: "fail", text: `${userId}: ❌ ${account.nickname || account.uid} ${res.message || res.code}` }
+        return { status: "fail", text: `${label}: ❌ ${account.nickname || account.uid} ${res.message || res.code}` }
       } catch (err) {
         await recordFail(1)
-        return { status: "fail", text: `${userId}: 异常 ${err?.message || err}` }
+        return { status: "fail", text: `${label}: 异常 ${err?.message || err}` }
       }
     }
 
-    for (let i = 0; i < users.length; i += concurrency) {
-      const batch = users.slice(i, i + concurrency)
-      const batchResults = await Promise.all(batch.map(u => runOne(String(u))))
+    for (let i = 0; i < targets.length; i += concurrency) {
+      const batch = targets.slice(i, i + concurrency)
+      const batchResults = await Promise.all(batch.map(runOne))
       results.push(...batchResults)
-      if (i + concurrency < users.length && maxInterval > 0) {
+      if (i + concurrency < targets.length && maxInterval > 0) {
         const waitSec =
           minInterval === maxInterval ? minInterval : minInterval + Math.random() * (maxInterval - minInterval)
         await sleep(waitSec * 1000)
@@ -1770,9 +1774,9 @@ export class enduid extends plugin {
       let fail = 0
       let skip = 0
       const resultsAll = []
+      const targets = await listBoundAccounts(users)
 
-      async function runOne(userId) {
-        const { account } = await getActiveAccount(userId)
+      async function runOne({ account }) {
         if (!account) {
           return {
             status: "skip",
@@ -1852,9 +1856,9 @@ export class enduid extends plugin {
         }
       }
 
-      for (let i = 0; i < users.length; i += concurrency) {
-        const batch = users.slice(i, i + concurrency).map(String)
-        const results = await Promise.all(batch.map(u => runOne(u)))
+      for (let i = 0; i < targets.length; i += concurrency) {
+        const batch = targets.slice(i, i + concurrency)
+        const results = await Promise.all(batch.map(runOne))
         for (const r of results) {
           if (r.status === "success") success++
           else if (r.status === "signed") signed++
@@ -1862,7 +1866,7 @@ export class enduid extends plugin {
           else if (r.status === "skip") skip++
           resultsAll.push(r)
         }
-        if (i + concurrency < users.length && maxInterval > 0) {
+        if (i + concurrency < targets.length && maxInterval > 0) {
           const waitSec =
             minInterval === maxInterval ? minInterval : minInterval + Math.random() * (maxInterval - minInterval)
           await sleep(waitSec * 1000)
@@ -2082,22 +2086,14 @@ export class enduid extends plugin {
 
   async autoSignOn() {
     const e = this.e
-    const { account } = await getActiveAccount(e.user_id)
-    if (!account?.uid) {
-      await e.reply(`${GAME_TITLE} 还没有绑定账号，无法开启`, true)
-      return true
-    }
-    if (!account?.cred) {
-      if (account?.uidOnly) {
-        await e.reply(`${GAME_TITLE} 当前账号仅绑定UID（仅面板），无法开启自动签到`, true)
-        return true
-      }
-      await e.reply(`${GAME_TITLE} 还没有绑定账号，无法开启`, true)
+    const { accounts } = await getUserData(e.user_id)
+    if (!accounts.some(account => account.cred && account.uid)) {
+      await e.reply(`${GAME_TITLE} 未找到支持签到的绑定账号，请先私聊 #zmd登录 / #zmd绑定`, true)
       return true
     }
 
     await setAutoSign(e.user_id, true)
-    await e.reply(`${GAME_TITLE} 已开启自动签到`, true)
+    await e.reply(`${GAME_TITLE} 已开启自动签到（覆盖所有已绑定账号）`, true)
     return true
   }
 

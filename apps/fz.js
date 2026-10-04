@@ -16,9 +16,9 @@ import cfg from "../model/config.js"
 import { patchTempSessionReply } from "../model/reply.js"
 import { render as renderImg } from "../model/render.js"
 import { getMessageText, getQueryUserId } from "../model/mention.js"
-import { listBoundUsers } from "../model/store.js"
+import { listBoundAccounts, listBoundUsers } from "../model/store.js"
 import { attendanceArknights } from "../model/skland/client.js"
-import { getFzAccountForUser } from "../model/fz/account.js"
+import { getFzAccount, getFzAccountForUser } from "../model/fz/account.js"
 import {
   deleteFzGachaLogsForUser,
   exportFzGachaLogsForUser,
@@ -296,11 +296,11 @@ function buildRefreshDoneLines({ res, isOther, targetId, full = false }) {
   ]
 }
 
-async function runFzSignOne(userId) {
+async function runFzSignOne({ userId, account }) {
   const userText = String(userId || "").trim()
-  const fallbackName = userText ? `QQ:${userText}` : "未绑定"
+  const fallbackName = String(account?.nickname || account?.uid || (userText ? `QQ:${userText}` : "未绑定"))
 
-  const acc = await getFzAccountForUser(userId)
+  const acc = await getFzAccount(account)
   if (!acc.ok) {
     const msg = cleanBatchMessage(acc.message)
     return {
@@ -368,6 +368,7 @@ async function runFzSignOne(userId) {
 
 async function runFzSignBatch(userIds) {
   const users = Array.isArray(userIds) ? userIds.map(String).filter(Boolean) : []
+  const targets = await listBoundAccounts(users)
   const concurrency = Math.max(1, Number(cfg.fz?.autoSign?.concurrency) || 3)
   const minInterval = Math.max(0, Number(cfg.fz?.autoSign?.minIntervalSec) || 0)
   const maxInterval = Math.max(minInterval, Number(cfg.fz?.autoSign?.maxIntervalSec) || minInterval)
@@ -378,9 +379,9 @@ async function runFzSignBatch(userIds) {
   let skip = 0
   const resultsAll = []
 
-  for (let i = 0; i < users.length; i += concurrency) {
-    const batch = users.slice(i, i + concurrency)
-    const results = await Promise.all(batch.map(u => runFzSignOne(u)))
+  for (let i = 0; i < targets.length; i += concurrency) {
+    const batch = targets.slice(i, i + concurrency)
+    const results = await Promise.all(batch.map(runFzSignOne))
 
     for (const r of results) {
       if (r.status === "success") success++
@@ -390,7 +391,7 @@ async function runFzSignBatch(userIds) {
       resultsAll.push(r)
     }
 
-    if (i + concurrency < users.length && maxInterval > 0) {
+    if (i + concurrency < targets.length && maxInterval > 0) {
       const waitSec = minInterval === maxInterval ? minInterval : minInterval + Math.random() * (maxInterval - minInterval)
       await sleep(waitSec * 1000)
     }
@@ -587,7 +588,12 @@ export class fz extends plugin {
 
   async autoSignOn() {
     const e = this.e
-    const acc = await getFzAccountForUser(e.user_id)
+    const targets = await listBoundAccounts([e.user_id])
+    let acc
+    for (const { account } of targets) {
+      acc = await getFzAccount(account)
+      if (acc.ok) break
+    }
     if (!acc.ok) {
       await e.reply(acc.message, true)
       return true
@@ -598,7 +604,7 @@ export class fz extends plugin {
       await e.reply(`${GAME_TITLE} 开启失败：${err?.message || err}`, true)
       return true
     }
-    await e.reply(`${GAME_TITLE} 已开启自动签到`, true)
+    await e.reply(`${GAME_TITLE} 已开启自动签到（覆盖所有已绑定账号）`, true)
     return true
   }
 

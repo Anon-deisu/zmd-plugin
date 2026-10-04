@@ -36,6 +36,10 @@ function pickBestBindingEntry(item) {
 
 export async function getFzAccountForUser(userId) {
   const { account } = await getActiveAccount(userId)
+  return getFzAccount(account)
+}
+
+export async function getFzAccount(account) {
   if (!account) {
     return { ok: false, message: `${GAME_TITLE} 未绑定森空岛账号，请先私聊 #zmd登录 / #zmd绑定` }
   }
