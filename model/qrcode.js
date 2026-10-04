@@ -23,7 +23,7 @@ async function getQrLib() {
     return qrLib
   } catch (err) {
     const reason = err?.message || String(err)
-    throw new Error(`缺少依赖：qrcode（请在 TRSS-Yunzai 根目录执行 pnpm add qrcode 后重启）\n${reason}`)
+    throw new Error(`缺少依赖：qrcode（请在本插件目录执行 corepack pnpm install --ignore-workspace --frozen-lockfile 后重启）\n${reason}`)
   }
 }
 

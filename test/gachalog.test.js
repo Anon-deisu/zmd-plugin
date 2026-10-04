@@ -6,11 +6,18 @@ import test, { mock } from "node:test"
 const fetchMock = mock.fn(() => assert.fail("Unexpected network request"))
 mock.module("node-fetch", { defaultExport: fetchMock })
 mock.module("../model/config.js", { defaultExport: { skland: { ua: { ios: "test-agent" } } } })
+mock.module("../model/alias.js", { namedExports: { loadAliasMap: async () => ({}) } })
+mock.module("../model/card.js", {
+  namedExports: { getCardDetailForUser: async () => ({ ok: false }), getLocalCardDetailByRoleId: async () => null },
+})
+mock.module("../model/wiki/fetch.js", { namedExports: { ensureListData: async () => null } })
 
-const { __gachalogTest, updateGachaLogsForUser, importGachaLogsFromU8TokenForUser } = await import("../model/gachalog.js")
+const { __gachalogTest, updateGachaLogsForUser, importGachaLogsFromU8TokenForUser, getGachaLogViewForRoleId } = await import("../model/gachalog.js")
 
 const SPECIAL = "E_CharacterGachaPoolType_Special"
 const JOINT = "E_CharacterGachaPoolType_Joint"
+// Official WebView maps operator.type.rerun (重构寻访) to this record API type.
+const RERUN = "E_CharacterGachaPoolType_Rerun"
 
 function makePull(seq, overrides = {}) {
   return {
@@ -307,7 +314,48 @@ test("全量刷新按记录键补齐且不删除接口未返回的旧记录", ()
   assert.equal(merged.some(item => item.poolId === "joint_new"), true)
 })
 
-function mockGachaSync(t, { failLastPage = false } = {}) {
+function makeRerunPull(seq, overrides = {}) {
+  return makePull(seq, {
+    poolId: "revisit_fixture",
+    poolName: "复刻测试寻访",
+    sourcePoolType: RERUN,
+    ...overrides,
+  })
+}
+
+function rerunContent() {
+  return {
+    code: 0,
+    data: {
+      pool: {
+        pool_type: "rerun",
+        pool_name: "复刻测试寻访",
+        up6_name: "复刻UP",
+        all: [
+          { id: "char_rerun_up", name: "复刻UP", rarity: 6 },
+          { id: "char_rerun_off", name: "常驻六星", rarity: 6 },
+        ],
+      },
+    },
+  }
+}
+
+test("重构寻访 content 类型和 UP 角色使用官方映射", () => {
+  const metadata = __gachalogTest.mapContentPoolMetadata(
+    { poolId: "revisit_fixture", sourcePoolType: SPECIAL }, rerunContent(),
+  )
+  assert.equal(metadata.sourcePoolType, RERUN)
+  assert.deepEqual(metadata.featuredIds, ["char_rerun_up"])
+  assert.deepEqual(metadata.featuredNames, ["复刻UP"])
+})
+
+test("重构寻访的信物赠礼不计入抽数和六星出货", () => {
+  const pull = makeRerunPull(1, { rarity: 6 })
+  const gift = makeRerunPull(2, { kind: "gift_operator_token", rarity: 6 })
+  assert.deepEqual(__gachalogTest.filterPullRecords([pull, gift]), [pull])
+})
+
+function mockGachaSync(t, { failLastPage = false, rerun = false, failRerun = false } = {}) {
   const roleId = "100000001"
   const weaponPull = (seq, overrides = {}) => makePull(seq, { poolId: "weapon_test", ...overrides })
   let cache = {
@@ -326,6 +374,7 @@ function mockGachaSync(t, { failLastPage = false } = {}) {
   const account = { uid: roleId, cred: "test-cred", token: "test-token", recordUid: "test-record-uid" }
   const previousRedis = global.redis
   global.redis = {
+    sMembers: async () => [],
     get: async key => {
       assert.equal(key, "Yz:EndUID:User:10001")
       return JSON.stringify({ accounts: [account], active: 0, autoSign: false })
@@ -364,9 +413,25 @@ function mockGachaSync(t, { failLastPage = false } = {}) {
       if (failLastPage && poolType === SPECIAL && cursor === "70") {
         return new Response("unavailable", { status: 503 })
       }
-      data = { code: 0, data: poolType === SPECIAL ? pages[cursor] : { list: [], hasMore: false } }
+      const rerunPages = {
+        0: { list: [
+          makeRerunPull(3, { sourcePoolType: undefined }),
+          makeRerunPull(2, { sourcePoolType: undefined, rarity: 6, charId: "char_rerun_off", charName: "常驻六星", isFree: true }),
+        ], hasMore: true },
+        2: { list: [
+          makeRerunPull(1, { sourcePoolType: undefined, rarity: 6, charId: "char_rerun_off", charName: "常驻六星" }),
+          makeRerunPull(0, { sourcePoolType: undefined, kind: "gift_operator_token", rarity: 6 }),
+        ], hasMore: false },
+      }
+      if (failRerun && poolType === RERUN && cursor === "2") {
+        return new Response("unavailable", { status: 503 })
+      }
+      const page = poolType === SPECIAL ? pages[cursor] : rerun && poolType === RERUN ? rerunPages[cursor] : { list: [], hasMore: false }
+      data = { code: 0, data: page }
     } else if (url.pathname === "/api/record/weapon") {
       data = { code: 0, data: { list: [weaponPull(50, { rarity: 6 }), weaponPull(49, { rarity: 6 })], hasMore: false } }
+    } else if (url.pathname === "/api/content" && url.searchParams.get("pool_id") === "revisit_fixture") {
+      data = rerunContent()
     } else {
       assert.fail(`Unexpected request: ${url.pathname}`)
     }
@@ -402,6 +467,39 @@ for (const [label, sync] of [
     assert.equal(getCache().charList.length, 7)
     assert.equal(getCache().weaponList.length, 2)
   })
+
+  test(`${label}请求重构寻访分页并将付费与免费六星写入缓存和展示数据`, async t => {
+    const { getCache, requestedPages } = mockGachaSync(t, { rerun: true })
+    const result = await sync()
+    assert.equal(result.ok, true, result.message)
+    assert.ok(requestedPages.includes(`${RERUN}:0`), "must request the official Rerun pool type")
+    assert.ok(requestedPages.includes(`${RERUN}:2`), "must finish Rerun pagination")
+
+    const pulls = getCache().charList.filter(item => item.poolId === "revisit_fixture")
+    assert.equal(pulls.length, 3)
+    assert.ok(pulls.every(item => item.sourcePoolType === RERUN))
+    assert.equal(pulls.filter(item => item.rarity === 6).length, 2)
+    assert.equal(getCache().poolMetadata.revisit_fixture.sourcePoolType, RERUN)
+
+    const view = await getGachaLogViewForRoleId("100000001", { allowUnbound: true, poolKind: "char" })
+    assert.equal(view.ok, true, view.message)
+    const pool = view.view.gacha.pools.find(item => item.poolId === "revisit_fixture")
+    assert.equal(pool.title, "复刻测试寻访")
+    assert.equal(pool.sourcePoolType, RERUN)
+    assert.equal(pool.stats.total, 3)
+    assert.equal(pool.stats.free, 1)
+    assert.equal(pool.stats.six, 2)
+    assert.equal(pool.pity, 1)
+    assert.equal(pool.logs.filter(log => log.logType === "six").length, 2)
+    assert.equal(pool.logs.find(log => log.logType === "six" && !log.isFree).tag, "歪")
+    assert.equal(pool.logs.find(log => log.logType === "six" && log.isFree).tag, "")
+    assert.equal(view.view.gacha.pools.find(item => item.poolId === "special_test").stats.total, 7)
+
+    const again = await sync()
+    assert.equal(again.ok, true, again.message)
+    assert.equal(again.newCharCount, 0)
+    assert.equal(getCache().charList.filter(item => item.poolId === "revisit_fixture").length, 3)
+  })
 }
 
 test("旧游标之后分页请求失败时不写入不完整缓存", async t => {
@@ -412,4 +510,12 @@ test("旧游标之后分页请求失败时不写入不完整缓存", async t => 
   assert.match(result.message, /HTTP 503/)
   assert.equal(write.mock.callCount(), 0)
   assert.equal(getCache().charList.length, 3)
+})
+
+test("重构寻访中途失败不能被遗漏后仍报告同步成功", async t => {
+  const { write } = mockGachaSync(t, { rerun: true, failRerun: true })
+  const result = await updateGachaLogsForUser("10001")
+  assert.equal(result.ok, false)
+  assert.match(result.message, /HTTP 503/)
+  assert.equal(write.mock.callCount(), 0)
 })

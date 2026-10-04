@@ -218,6 +218,8 @@
 
 ```bash
 git clone https://github.com/Anon-deisu/zmd-plugin plugins/zmd-plugin
+cd plugins/zmd-plugin
+corepack pnpm install --ignore-workspace --frozen-lockfile
 ```
 
 后续更新：
@@ -225,6 +227,7 @@ git clone https://github.com/Anon-deisu/zmd-plugin plugins/zmd-plugin
 ```bash
 cd plugins/zmd-plugin
 git pull
+corepack pnpm install --ignore-workspace --frozen-lockfile
 ```
 
 如果你是机器人主人，也可以直接在机器人内更新：
@@ -237,13 +240,15 @@ git pull
 
 1. 下载 / 解压本仓库到 `TRSS-Yunzai/plugins/` 下
 2. 建议插件目录名使用：`zmd-plugin`
-3. 在 `TRSS-Yunzai` 根目录安装依赖：
+3. 进入插件目录，安装插件声明的依赖：
 
 ```bash
-pnpm add qrcode node-fetch yaml puppeteer
+corepack pnpm install --ignore-workspace --frozen-lockfile
 ```
 
 4. 重启机器人
+
+插件的 `package.json` / `pnpm-lock.yaml` 声明并锁定 `qrcode`，不再依赖其他插件间接提供。`corepack pnpm` 会使用插件指定的 pnpm 版本；`--ignore-workspace` 让这次安装仅处理当前插件，避免把其他插件的临时项目一并纳入。`node-fetch`、`yaml`、`art-template`、`puppeteer` 仍复用 TRSS-Yunzai 已有依赖。
 
 <p align="right"><a href="#quick-nav">返回导航</a></p>
 
@@ -377,6 +382,8 @@ friendApi:
 
 普通更新、全量更新和 u8 token 导入都会遍历接口当前可用的全部分页，再按记录键合并，补齐迟到的出货记录并修正六星字段。不会删除接口未返回的旧记录，也不会重复计入已有记录；历史较多时更新可能比以前稍慢。已出现记录缺失的账号可直接重新执行普通更新，无需删除缓存。
 
+角色同步包含特许、基础、新手、联合及**重构寻访（复刻池）**。重构寻访使用独立的 `E_CharacterGachaPoolType_Rerun` 请求类型，不会从特许池请求中返回；其付费与免费六星均展示，信物赠礼不计作寻访抽数或六星出货。
+
 <a id="commands-ann"></a>
 ### 公告
 
@@ -496,13 +503,15 @@ friendApi:
 <a id="faq-deps"></a>
 ### 1. 提示缺少依赖 `qrcode` / `node-fetch` / `yaml` / `puppeteer`
 
-在 `TRSS-Yunzai` 根目录执行：
+缺少 `qrcode` 时，在**当前插件目录**执行，再重启机器人：
 
 ```bash
-pnpm add qrcode node-fetch yaml puppeteer
+corepack pnpm install --ignore-workspace --frozen-lockfile
 ```
 
-然后重启机器人。
+不要只临时往 `node_modules` 填包：未被当前项目声明的依赖，在重装或清理依赖时可能消失；其他插件的间接依赖也不保证对当前插件可见。本插件现已正式声明 `qrcode`。如遇 `ERR_PNPM_UNEXPECTED_STORE`，检查是否混用了不同 pnpm 主版本，不要直接删除整套机器人依赖。
+
+`node-fetch`、`yaml`、`art-template`、`puppeteer` 属于主框架依赖，缺失时应按 TRSS-Yunzai 的安装说明恢复主框架依赖，不要用 npm 版本覆盖 TRSS 的 `link:` 模块。
 
 <a id="faq-panel-conflict"></a>
 ### 2. `#<角色>面板` 与其他插件冲突

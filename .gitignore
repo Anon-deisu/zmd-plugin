@@ -4,6 +4,7 @@ data/
 # Local temp/cache
 temp/
 *.log
+node_modules/
 
 # Generated icon cache (do not commit)
 resources/endfield/itemiconbig/

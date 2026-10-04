@@ -1339,7 +1339,7 @@ export class enduid extends plugin {
       await import("qrcode")
     } catch (err) {
       const msg = String(err?.message || err).split("\n")[0]
-      qrcodeDep = `缺少（pnpm add qrcode）：${msg}`
+      qrcodeDep = `缺少（在本插件目录执行 corepack pnpm install --ignore-workspace --frozen-lockfile）：${msg}`
     }
     let friendApiHealth = "(disabled)"
     const friendRuntime = getFriendApiRuntimeConfig()

@@ -64,12 +64,19 @@ const CHARACTER_POOL_TYPES = [
   "E_CharacterGachaPoolType_Beginner",
   "E_CharacterGachaPoolType_Standard",
   "E_CharacterGachaPoolType_Joint",
+  "E_CharacterGachaPoolType_Rerun",
 ]
 
 const CHARACTER_POOL_TYPE_SPECIAL = "E_CharacterGachaPoolType_Special"
 const CHARACTER_POOL_TYPE_BEGINNER = "E_CharacterGachaPoolType_Beginner"
 const CHARACTER_POOL_TYPE_STANDARD = "E_CharacterGachaPoolType_Standard"
 const CHARACTER_POOL_TYPE_JOINT = "E_CharacterGachaPoolType_Joint"
+const CHARACTER_POOL_TYPE_RERUN = "E_CharacterGachaPoolType_Rerun"
+const FEATURED_CHARACTER_POOL_TYPES = new Set([
+  CHARACTER_POOL_TYPE_SPECIAL,
+  CHARACTER_POOL_TYPE_JOINT,
+  CHARACTER_POOL_TYPE_RERUN,
+])
 
 // 已结束卡池的 content 接口会返回 404；这份稳定 ID 表用于首次升级时补齐历史记录。
 const KNOWN_CHAR_POOL_FEATURED_IDS = Object.freeze({
@@ -90,6 +97,7 @@ const contentPoolTypeMap = Object.freeze({
   newbie: CHARACTER_POOL_TYPE_BEGINNER,
   normal: CHARACTER_POOL_TYPE_STANDARD,
   extra: CHARACTER_POOL_TYPE_JOINT,
+  rerun: CHARACTER_POOL_TYPE_RERUN,
 })
 const poolMetadataRuntimeCache = new Map()
 
@@ -149,7 +157,7 @@ function safeInt(value, def = 0) {
 }
 
 function isPullRecord(record) {
-  return !!record && typeof record === "object" && String(record.kind || "") !== "gift_intel_book"
+  return !!record && typeof record === "object" && !["gift_intel_book", "gift_operator_token"].includes(String(record.kind || ""))
 }
 
 function filterPullRecords(records) {
@@ -478,14 +486,14 @@ function normalizeNameKey(raw) {
 
 function isLimitedPoolId(poolId) {
   const id = String(poolId || "").trim().toLowerCase()
-  return id.startsWith("special") || id.startsWith("limited") || id.startsWith("joint")
+  return id.startsWith("special") || id.startsWith("limited") || id.startsWith("joint") || id.startsWith("rerun")
 }
 
-function isLimitedCharPool({ poolId, title } = {}) {
+function isLimitedCharPool({ poolId, title, sourcePoolType } = {}) {
+  if (FEATURED_CHARACTER_POOL_TYPES.has(sourcePoolType)) return true
   if (isLimitedPoolId(poolId)) return true
   const t = String(title || "")
-  // Heuristic: limited banners are usually labelled as "特许寻访".
-  return /特许寻访/.test(t) || /限定/.test(t)
+  return /特许寻访|重构寻访|重构·|限定/.test(t)
 }
 
 function matchFeaturedItem(item, { featuredIds = [], featuredNames = [], featuredNamesComplete = null } = {}) {
@@ -582,6 +590,7 @@ function inferCharacterSourcePoolType(record) {
   if (poolId === "standard" || poolId.startsWith("standard_")) return CHARACTER_POOL_TYPE_STANDARD
   if (poolId === "beginner" || poolId.startsWith("beginner_")) return CHARACTER_POOL_TYPE_BEGINNER
   if (poolId.startsWith("joint_")) return CHARACTER_POOL_TYPE_JOINT
+  if (poolId.startsWith("rerun")) return CHARACTER_POOL_TYPE_RERUN
   return CHARACTER_POOL_TYPE_SPECIAL
 }
 
@@ -693,7 +702,7 @@ async function resolveCharacterPoolMetadata(records, { existingMetadata = {}, se
     const poolId = String(record?.poolId || "").trim()
     if (!poolId || candidates.has(poolId)) continue
     const sourcePoolType = inferCharacterSourcePoolType(record)
-    if (sourcePoolType !== CHARACTER_POOL_TYPE_SPECIAL && sourcePoolType !== CHARACTER_POOL_TYPE_JOINT) continue
+    if (!FEATURED_CHARACTER_POOL_TYPES.has(sourcePoolType)) continue
     candidates.set(poolId, {
       poolId,
       poolName: String(record?.poolName || "").trim(),
@@ -923,6 +932,7 @@ function buildPoolsByPoolId(items, { kind = "char", hasFree = true } = {}) {
       kind,
       poolId,
       title: baseTitle,
+      sourcePoolType: String(poolItems[0]?.sourcePoolType || ""),
       timeRange: formatYmdRangeFromMs(poolItems),
       pity: getPityFromRecent(poolItems, { excludeFree: true }),
       stats: buildPoolStats(poolItems, { hasFree }),
@@ -1609,7 +1619,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
   let wikiListData = null
   try {
     const needUpDetect = pools.some(p => {
-      if (p.kind !== "char" || !isLimitedCharPool({ poolId: p.poolId, title: p.title })) return false
+      if (p.kind !== "char" || !isLimitedCharPool(p)) return false
       const metadata = poolMetadata[String(p.poolId || "").trim()]
       return !Array.isArray(metadata?.featuredNames) || !metadata.featuredNames.length
     })
@@ -1627,7 +1637,7 @@ async function buildGachaLogView({ userId, roleId, account, exportData, faceUser
         ? (weaponItemsByPoolId.get(String(p.poolId || "").trim()) || [])
         : (charItemsByPoolId.get(String(p.poolId || "").trim()) || [])
 
-    const isLimited = p.kind === "char" && isLimitedCharPool({ poolId: p.poolId, title: p.title })
+    const isLimited = p.kind === "char" && isLimitedCharPool(p)
 
     const metadata = poolMetadata[String(p.poolId || "").trim()]
     let featuredIds = Array.isArray(metadata?.featuredIds) ? metadata.featuredIds : []

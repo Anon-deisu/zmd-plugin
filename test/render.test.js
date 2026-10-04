@@ -410,3 +410,11 @@ test("角色面板及两种抽卡模板不启用新主题", async () => {
     assert.equal(data.bodyClass, "original-style")
   }
 })
+
+test("插件直接依赖 qrcode 可生成有效的 420 像素 PNG", async () => {
+  const { default: QRCode } = await import("qrcode")
+  const png = await QRCode.toBuffer("zmd-plugin dependency check", { type: "png", width: 420 })
+  assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a")
+  assert.equal(png.readUInt32BE(16), 420)
+  assert.equal(png.readUInt32BE(20), 420)
+})
