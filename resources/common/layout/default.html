@@ -81,11 +81,18 @@
       position: relative;
       z-index: 1;
     }
+    body.report-theme .zmd-side-bg { display: none; }
   </style>
 </head>
 
 <body class="elem-{{element||elem||`hydro`}} {{displayMode || mode || `default`}}-mode {{if bgImage}}has-side-bg{{/if}} {{bodyClass}}" {{@sys.scale}}>
   <div class="container" id="container">
+    {{if reportTheme}}
+    <div class="report-masthead">
+      <div class="report-brand"><img src="{{_res_path}}help/icon_path/通用.png" alt="" />{{if bodyClass.indexOf('report-fz-') >= 0}}明日方舟{{else}}终末地{{/if}}<span> / {{_plugin}}</span></div>
+      <span class="report-edition">SKLAND · ACCOUNT SERVICES</span>
+    </div>
+    {{/if}}
     <div class="zmd-side-bg{{if bgImage}} has-image{{/if}}" {{if bgImage}}style="--zmd-side-bg:url('{{_res_path}}{{bgImage}}');"{{/if}}>
       <div class="zmd-side-mask"></div>
     </div>

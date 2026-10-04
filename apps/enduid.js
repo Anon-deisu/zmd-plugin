@@ -609,6 +609,13 @@ export class enduid extends plugin {
         desc: "绑定/切换终末地账号",
         items: [
           { name: "登录", cmd: `${p}登录`, desc: qrLoginDesc },
+          {
+            name: "群聊扫码登录",
+            cmd: `${p}群聊扫码登录 开启 / ${p}群聊扫码登录 关闭`,
+            desc: `${groupQrLoginEnabled ? "当前已开启" : "当前已关闭"}，仅主人可设置`,
+            badge: "MASTER",
+            showToAll: true,
+          },
           { name: "绑定", cmd: `${p}绑定<cred|token>`, desc: "私聊，支持 cred= / token= 前缀" },
           { name: "绑定UID", cmd: `${p}绑定<UID>`, desc: "无需登录，仅用于角色面板查询" },
           { name: "查看", cmd: `${p}查看`, desc: "查看已绑定账号" },
@@ -631,7 +638,7 @@ export class enduid extends plugin {
           { name: "角色记录", cmd: `${p}角色记录<UID/@他人>`, desc: "只看角色池" },
           { name: "武器记录", cmd: `${p}武器记录<UID/@他人>`, desc: "只看武器池" },
           { name: "更新抽卡记录", cmd: `${p}更新抽卡记录<UID/@他人>`, desc: "拉取并保存抽卡记录" },
-          { name: "全量更新抽卡记录", cmd: `${p}全量更新抽卡记录<UID/@他人>`, desc: "全量重拉并覆盖本地缓存" },
+          { name: "全量更新抽卡记录", cmd: `${p}全量更新抽卡记录<UID/@他人>`, desc: "补齐历史并修正记录，保留旧数据" },
           { name: "更新武器图标", cmd: `${p}更新武器图标<UID>`, desc: "从 wiki 补全抽卡武器图标缓存（可选：强制）" },
         ],
       },
@@ -705,12 +712,6 @@ export class enduid extends plugin {
           { name: "匿名Token", cmd: "#统一后端匿名token <token>", desc: "设置统一后端匿名令牌", badge: "MASTER" },
           { name: "本地地址", cmd: "#本地数据地址 <url>", desc: "设置本地 Friend API 地址", badge: "MASTER" },
           { name: "本地Token", cmd: "#本地数据token <token>", desc: "设置本地 Friend API Bearer", badge: "MASTER" },
-          {
-            name: "群聊扫码",
-            cmd: `${p}群聊扫码登录 开启 / ${p}群聊扫码登录 关闭`,
-            desc: `${groupQrLoginEnabled ? "当前已开启" : "当前已关闭"}，仅主人可设置`,
-            badge: "MASTER",
-          },
           { name: "反馈", cmd: "#反馈", desc: "联系作者 1493218095 / 加群 1084459856" },
           { name: "上传背景图", cmd: `${p}上传背景图`, desc: "上传到本地图库（随机渲染背景）", badge: "MASTER" },
         ],
@@ -720,7 +721,7 @@ export class enduid extends plugin {
     const visibleSections = sections
       .map(s => ({
         ...s,
-        items: Array.isArray(s.items) ? s.items.filter(it => isMaster || it?.badge !== "MASTER") : [],
+        items: Array.isArray(s.items) ? s.items.filter(it => isMaster || it.showToAll || it?.badge !== "MASTER") : [],
       }))
       .filter(s => Array.isArray(s.items) && s.items.length)
 
@@ -769,6 +770,7 @@ export class enduid extends plugin {
       ``,
       `【账号】`,
       `- ${p}登录（${qrLoginDesc}）`,
+      `- ${p}群聊扫码登录 开启/关闭（仅主人），${groupQrLoginEnabled ? "当前已开启" : "当前已关闭"}`,
       `- ${p}绑定<cred|token>（私聊）`,
       `- ${p}绑定<UID>（无需登录，仅用于角色面板查询）`,
       `- ${p}查看`,
@@ -836,7 +838,6 @@ export class enduid extends plugin {
       isMaster ? `- #统一后端apikey <key>（仅 master，建议私聊）` : "",
       isMaster ? `- #统一后端frameworktoken <token>（仅 master，建议私聊）` : "",
       isMaster ? `- #统一后端匿名token <token>（仅 master，建议私聊）` : "",
-      isMaster ? `- ${p}群聊扫码登录 开启/关闭（仅 master）` : "",
       `- #反馈（联系作者 1493218095 / 加群 1084459856）`,
       isMaster ? `- ${p}上传背景图（仅 master）` : "",
     ]

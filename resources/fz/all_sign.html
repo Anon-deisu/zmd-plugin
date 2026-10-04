@@ -1,89 +1,34 @@
 {{extend defaultLayout}}
-<!--
-  fz/all_sign
-
-  渲染入口：apps/fz.js（#fz全部签到）
-  期望参数：title/subtitle/time/success/signed/fail/skip/total/items/truncated/shown/remain
--->
-
 {{block 'css'}}
+<link rel="stylesheet" href="{{_res_path}}enduid/css/all_sign.css" />
 <link rel="stylesheet" href="{{_res_path}}fz/all_sign.css" />
 {{/block}}
-
 {{block 'main'}}
-<div class="duty-sheet">
-  <div class="sheet-header">
-    <div class="sheet-copy">
-      <div class="sheet-kicker">Rhodes Island Duty Board</div>
-      <div class="sheet-title">{{title}}</div>
-      <div class="sheet-subtitle">{{subtitle || '森空岛账号值班签到总览'}}</div>
-    </div>
-    <div class="shift-stamp">
-      <div class="stamp-label">值班批次</div>
-      <div class="stamp-time">{{time}}</div>
-    </div>
+<header class="report-header">
+  <div><h1>{{title}}</h1><p>{{subtitle || '森空岛账号签到结果'}}</p></div>
+  <time class="report-time">{{time}}</time>
+</header>
+<div class="sign-summary">
+  <div class="sign-total"><b>{{total}}</b><span>个绑定账号</span></div>
+  <div class="metric-band">
+    <div class="metric status-success"><b>{{success}}</b><span>签到成功</span></div>
+    <div class="metric status-signed"><b>{{signed}}</b><span>今日已签</span></div>
+    <div class="metric status-fail"><b>{{fail}}</b><span>签到失败</span></div>
+    <div class="metric status-skip"><b>{{skip || 0}}</b><span>本次跳过</span></div>
   </div>
-
-  <div class="summary-board">
-    <div class="summary-card card-total">
-      <div class="card-label">总计</div>
-      <div class="card-value">{{total}}</div>
-      <div class="card-note">本轮纳入统计</div>
-    </div>
-    <div class="summary-card summary-success">
-      <div class="card-label">完成</div>
-      <div class="card-value">{{success}}</div>
-      <div class="card-note">成功签到</div>
-    </div>
-    <div class="summary-card summary-signed">
-      <div class="card-label">已签</div>
-      <div class="card-value">{{signed}}</div>
-      <div class="card-note">今日已完成</div>
-    </div>
-    <div class="summary-card summary-fail">
-      <div class="card-label">异常</div>
-      <div class="card-value">{{fail}}</div>
-      <div class="card-note">请求失败</div>
-    </div>
-    <div class="summary-card summary-skip">
-      <div class="card-label">跳过</div>
-      <div class="card-value">{{skip || 0}}</div>
-      <div class="card-note">未纳入执行</div>
-    </div>
+</div>
+<div class="section-heading"><h2>值班名册</h2><span>{{items.length}} 条记录</span></div>
+{{if truncated}}<div class="sign-notice">已展示 {{shown}} 个账号，另有 {{remain}} 个账号计入上方统计。</div>{{/if}}
+<div class="sign-table">
+  <div class="sign-table-head"><span>#</span><span>博士 / UID</span><span>状态</span><span>执行结果</span></div>
+  {{each items it}}
+  <div class="sign-row">
+    <div class="sign-index">{{($index + 1).toString().padStart(2, '0')}}</div>
+    <div class="sign-identity"><strong>{{it.name}}</strong><span>UID {{it.uid}}</span></div>
+    <div class="sign-status status-{{it.status}}"><i></i>{{if it.status === 'success'}}成功{{else if it.status === 'signed'}}已签{{else if it.status === 'fail'}}失败{{else}}跳过{{/if}}</div>
+    <div class="sign-message">{{it.msg}}</div>
   </div>
-
-  {{if truncated}}
-  <div class="sheet-notice">
-    <span class="notice-badge">名单截断</span>
-    仅展示前 <strong>{{shown}}</strong> 条，剩余 <strong>{{remain}}</strong> 条未展示
-  </div>
-  {{/if}}
-
-  <div class="roster-panel">
-    <div class="roster-head">
-      <div class="roster-title">值班名册</div>
-      <div class="roster-subtitle">按执行顺序记录每个账号的签到状态</div>
-    </div>
-
-    <div class="roster-grid">
-      {{each items it}}
-      <div class="roster-card roster-card-{{it.status}}">
-        <div class="roster-index">#{{$index + 1}}</div>
-        <div class="roster-body">
-          <div class="roster-top">
-            <div class="roster-identity">
-              <div class="roster-name">{{it.name}}</div>
-              <div class="roster-uid">UID {{it.uid}}</div>
-            </div>
-            <div class="roster-status status-{{it.status}}">
-              {{if it.status === 'success'}}完成{{else if it.status === 'signed'}}已签{{else if it.status === 'fail'}}异常{{else}}跳过{{/if}}
-            </div>
-          </div>
-          <div class="roster-msg">{{it.msg}}</div>
-        </div>
-      </div>
-      {{/each}}
-    </div>
-  </div>
+  {{/each}}
+  {{if !items.length}}<div class="empty-state">本次没有可执行的账号</div>{{/if}}
 </div>
 {{/block}}

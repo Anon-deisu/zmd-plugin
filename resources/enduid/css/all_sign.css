@@ -1,433 +1,100 @@
-/*
-  enduid/all_sign
-
-  Used by: #zmd全部签到
-  Goal: execution terminal with strong hierarchy and orderly logs.
-*/
-
-body {
-  width: 1120px;
-  background: #06090b;
-  color: #d8e0d9;
-  font-family: "FZB", "PingFang SC", "Microsoft YaHei", sans-serif;
+body.report-theme {
+  width: 960px;
 }
-
-.container {
-  width: 1120px;
-  padding: 24px 24px 16px;
-}
-
-.terminal-shell {
-  position: relative;
-  overflow: hidden;
-  border-radius: 26px;
-  padding: 24px;
-  background:
-    linear-gradient(180deg, rgba(9, 13, 15, 0.98), rgba(14, 18, 20, 0.96)),
-    linear-gradient(90deg, rgba(111, 137, 121, 0.08), transparent 28%);
-  border: 1px solid rgba(133, 156, 141, 0.3);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
-}
-
-.terminal-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(156, 177, 164, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(156, 177, 164, 0.04) 1px, transparent 1px);
-  background-size: 100% 28px, 28px 100%;
-  opacity: 0.26;
-  pointer-events: none;
-}
-
-.terminal-shell::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at top right, rgba(164, 183, 168, 0.14), transparent 30%),
-    radial-gradient(circle at bottom left, rgba(205, 170, 92, 0.12), transparent 26%);
-  pointer-events: none;
-}
-
-.terminal-topbar,
-.terminal-hero,
-.summary-grid,
-.notice-bar,
-.detail-panel {
-  position: relative;
-  z-index: 1;
-}
-
-.terminal-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.terminal-mark {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.terminal-mark-label {
-  color: #9eb3a2;
-  font-size: 12px;
-  letter-spacing: 1.8px;
-  text-transform: uppercase;
-}
-
-.terminal-mark-id {
-  display: inline-flex;
-  align-items: center;
-  padding: 5px 10px;
-  border: 1px solid rgba(158, 179, 162, 0.24);
-  border-radius: 999px;
-  background: rgba(129, 149, 135, 0.12);
-  color: #dbe4dc;
-  font-size: 12px;
-  letter-spacing: 1px;
-}
-
-.timestamp-box {
-  min-width: 260px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(155, 174, 159, 0.18);
-  background: rgba(20, 26, 28, 0.85);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.timestamp-label {
-  color: rgba(197, 210, 200, 0.62);
-  font-size: 11px;
-  letter-spacing: 1.6px;
-}
-
-.timestamp-value {
-  margin-top: 6px;
-  color: #eef3ef;
-  font-size: 18px;
-  font-family: Consolas, "Courier New", monospace;
-  line-height: 1.2;
-}
-
-.terminal-hero {
+.sign-summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 250px;
-  gap: 16px;
-  margin-bottom: 16px;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
 }
-
-.hero-copy {
-  min-width: 0;
-  padding: 18px 18px 20px;
-  border-radius: 20px;
-  border: 1px solid rgba(143, 164, 149, 0.16);
-  background: linear-gradient(180deg, rgba(15, 21, 22, 0.92), rgba(16, 22, 24, 0.8));
+.sign-total {
+  padding: 20px 0;
 }
-
-.hero-title {
-  color: #f1f5f2;
-  font-family: "NZBZ", "FZB", "PingFang SC", sans-serif;
-  font-size: 38px;
-  line-height: 1.08;
-  letter-spacing: 1.2px;
+.sign-total b {
+  display: block;
+  font:
+    600 54px/1.1 Arial,
+    sans-serif;
 }
-
-.hero-subtitle {
-  margin-top: 10px;
-  color: rgba(214, 225, 216, 0.72);
-  font-size: 15px;
-  line-height: 1.45;
-}
-
-.hero-total-card {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 18px;
-  border-radius: 20px;
-  border: 1px solid rgba(201, 170, 97, 0.24);
-  background: linear-gradient(180deg, rgba(36, 31, 20, 0.84), rgba(23, 20, 14, 0.88));
-}
-
-.hero-total-label {
-  color: rgba(229, 205, 149, 0.76);
-  font-size: 11px;
-  letter-spacing: 1.8px;
-}
-
-.hero-total-value {
-  margin-top: 12px;
-  color: #f4d893;
-  font-size: 54px;
-  line-height: 1;
-  font-family: Consolas, "Courier New", monospace;
-}
-
-.hero-total-note {
-  margin-top: 10px;
-  color: rgba(229, 205, 149, 0.66);
+.sign-total span {
+  display: block;
+  color: var(--muted);
   font-size: 13px;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.summary-card {
-  min-height: 108px;
-  padding: 15px 16px 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(143, 164, 149, 0.14);
-  background: rgba(18, 24, 26, 0.84);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-.summary-code {
-  color: rgba(205, 216, 207, 0.58);
-  font-size: 11px;
-  letter-spacing: 1.6px;
-}
-
-.summary-label {
   margin-top: 8px;
-  color: rgba(228, 235, 229, 0.78);
-  font-size: 14px;
 }
-
-.summary-value {
-  margin-top: 16px;
-  font-size: 34px;
-  line-height: 1;
-  font-family: Consolas, "Courier New", monospace;
+.sign-summary .metric-band {
+  margin: 0;
 }
-
-.summary-total {
-  border-top: 2px solid rgba(208, 178, 105, 0.7);
-}
-
-.summary-total .summary-value {
-  color: #eed89d;
-}
-
-.summary-success {
-  border-top: 2px solid rgba(75, 161, 126, 0.74);
-}
-
-.summary-success .summary-value {
-  color: #73c39b;
-}
-
-.summary-signed {
-  border-top: 2px solid rgba(97, 143, 192, 0.74);
-}
-
-.summary-signed .summary-value {
-  color: #86acdb;
-}
-
-.summary-fail {
-  border-top: 2px solid rgba(192, 97, 97, 0.76);
-}
-
-.summary-fail .summary-value {
-  color: #da8d8d;
-}
-
-.summary-skip {
-  border-top: 2px solid rgba(138, 148, 154, 0.72);
-}
-
-.summary-skip .summary-value {
-  color: #b9c1c5;
-}
-
-.notice-bar {
-  display: flex;
+.sign-table-head,
+.sign-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 88px minmax(0, 1.45fr);
+  gap: 18px;
   align-items: center;
-  gap: 10px;
-  margin-top: 16px;
+}
+.sign-table-head {
   padding: 12px 14px;
-  border-radius: 15px;
-  border: 1px dashed rgba(205, 170, 92, 0.38);
-  background: rgba(44, 35, 18, 0.72);
-  color: rgba(239, 228, 198, 0.9);
-  font-size: 14px;
+  background: #e8ede8;
+  color: var(--muted);
+  font-size: 12px;
 }
-
-.notice-bar strong {
-  color: #f5d98f;
+.sign-row {
+  padding: 17px 14px;
+  border-bottom: 1px solid var(--line);
+  min-height: 76px;
 }
-
-.notice-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(235, 205, 135, 0.34);
-  background: rgba(235, 205, 135, 0.1);
-  color: #f2d690;
-  font-size: 11px;
-  letter-spacing: 1.2px;
+.sign-row:nth-child(odd) {
+  background: #eef1ed;
 }
-
-.detail-panel {
-  margin-top: 18px;
-  border-radius: 20px;
-  overflow: hidden;
-  border: 1px solid rgba(143, 164, 149, 0.16);
-  background: rgba(11, 16, 18, 0.9);
+.sign-index {
+  color: var(--muted);
+  font:
+    13px Arial,
+    sans-serif;
 }
-
-.detail-panel-head {
+.sign-identity {
+  min-width: 0;
+}
+.sign-identity strong {
+  display: block;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.sign-identity span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font:
+    12px/1.4 Arial,
+    sans-serif;
+  overflow-wrap: anywhere;
+}
+.sign-status {
   display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 18px 14px;
-  border-bottom: 1px solid rgba(143, 164, 149, 0.12);
-}
-
-.detail-title {
-  color: #eff5f0;
-  font-size: 20px;
-  letter-spacing: 0.4px;
-}
-
-.detail-subtitle {
-  color: rgba(209, 221, 211, 0.58);
+  gap: 7px;
+  align-items: center;
   font-size: 13px;
 }
-
-.table-head,
-.table-row {
-  display: grid;
-  grid-template-columns: 58px 180px minmax(0, 1.1fr) 94px minmax(0, 1.45fr);
-  gap: 12px;
-  align-items: center;
+.sign-status i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
-
-.table-head {
-  padding: 12px 18px;
-  color: rgba(198, 211, 202, 0.66);
-  font-size: 12px;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-  background: rgba(19, 26, 28, 0.94);
-  border-bottom: 1px solid rgba(143, 164, 149, 0.12);
-}
-
-.table-body {
-  padding: 6px 0;
-}
-
-.table-row {
-  position: relative;
-  min-height: 64px;
-  padding: 10px 18px;
-  border-left: 3px solid transparent;
-}
-
-.table-row + .table-row {
-  border-top: 1px solid rgba(143, 164, 149, 0.09);
-}
-
-.table-row:nth-child(odd) {
-  background: rgba(255, 255, 255, 0.01);
-}
-
-.row-success {
-  border-left-color: #4faa81;
-}
-
-.row-signed {
-  border-left-color: #6b93c3;
-}
-
-.row-fail {
-  border-left-color: #ca7878;
-}
-
-.row-skip {
-  border-left-color: #929ea5;
-}
-
-.row-index,
-.row-uid {
-  color: #d8dfda;
-  font-size: 15px;
-  font-family: Consolas, "Courier New", monospace;
-}
-
-.row-name {
+.sign-message {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
   min-width: 0;
-  color: #f1f5f2;
-  font-size: 16px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-
-.row-status {
-  display: flex;
-  align-items: center;
-}
-
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 60px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  border: 1px solid transparent;
-}
-
-.chip-success {
-  color: #79c79f;
-  border-color: rgba(79, 170, 129, 0.26);
-  background: rgba(79, 170, 129, 0.12);
-}
-
-.chip-signed {
-  color: #91b2dc;
-  border-color: rgba(107, 147, 195, 0.28);
-  background: rgba(107, 147, 195, 0.12);
-}
-
-.chip-fail {
-  color: #e3a0a0;
-  border-color: rgba(202, 120, 120, 0.28);
-  background: rgba(202, 120, 120, 0.11);
-}
-
-.chip-skip {
-  color: #bec8cd;
-  border-color: rgba(146, 158, 165, 0.24);
-  background: rgba(146, 158, 165, 0.11);
-}
-
-.row-msg {
-  min-width: 0;
-  color: rgba(214, 224, 216, 0.82);
-  font-size: 14px;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-.copyright {
-  color: rgba(255, 255, 255, 0.86);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-  opacity: 1;
+.sign-notice {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-left: 3px solid var(--amber);
+  background: #f1ecdf;
+  color: var(--amber);
+  font-size: 13px;
 }

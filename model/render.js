@@ -16,6 +16,17 @@ const DEFAULT_WATERMARK = `[终末地]${PLUGIN_ID} & yuyu-bot`
 
 // Increase render scale for sharper images (min 1.3).
 const MIN_RENDER_SCALE = 1.3
+const REPORT_TEMPLATES = new Set([
+  "help/index",
+  "enduid/info",
+  "enduid/daily",
+  "enduid/daily_pro",
+  "enduid/card",
+  "enduid/build",
+  "enduid/calendar",
+  "enduid/all_sign",
+  "fz/all_sign",
+])
 
 function scaleAttr(pct = 1) {
   const n = Number(pct)
@@ -24,7 +35,11 @@ function scaleAttr(pct = 1) {
   return `style="transform:scale(${clamped});transform-origin:0 0;"`
 }
 
-export async function render(tplPath, params = {}, { scale = MIN_RENDER_SCALE, quality = 100 } = {}) {
+export async function render(
+  tplPath,
+  params = {},
+  { scale = MIN_RENDER_SCALE, quality = 100 } = {},
+) {
   const [app, tpl] = String(tplPath || "").split("/")
   if (!app || !tpl) throw new Error(`Invalid tplPath: ${tplPath}`)
 
@@ -37,9 +52,14 @@ export async function render(tplPath, params = {}, { scale = MIN_RENDER_SCALE, q
 
   const imgType = String(params.imgType || "").trim()
   const bgImage = pickRandomSideBackgroundRel()
+  const reportTheme = REPORT_TEMPLATES.has(`${app}/${tpl}`)
 
   const data = {
     ...params,
+    reportTheme,
+    bodyClass: reportTheme
+      ? `${params.bodyClass || ""} report-theme report-${app}-${tpl}`.trim()
+      : params.bodyClass,
     bgImage,
     _plugin: PLUGIN_ID,
     saveId: params.saveId || params.save_id || tpl,

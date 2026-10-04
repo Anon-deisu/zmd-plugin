@@ -13,6 +13,7 @@ let responses
 let bindingErrors
 let logs
 let rendered
+let renderImage = true
 
 mock.module("../model/config.js", { defaultExport: cfg, namedExports: { configSave: unexpected } })
 mock.module("node-fetch", { defaultExport: unexpected })
@@ -22,7 +23,10 @@ mock.module("../../../lib/plugins/plugin.js", {
   },
 })
 mock.module("../model/render.js", {
-  namedExports: { render: async (template, data) => { rendered.push({ template, data }); return "test-image" } },
+  namedExports: { render: async (template, data) => { rendered.push({ template, data }); return renderImage ? "test-image" : null } },
+})
+mock.module("../model/card.js", {
+  namedExports: { getCardDetailForUser: async () => ({ ok: false }), getLocalCardDetailByRoleId: unexpected },
 })
 
 async function sign(game, cred, uid) {
@@ -80,6 +84,8 @@ beforeEach(() => {
   bindingErrors = new Set()
   logs = []
   rendered = []
+  renderImage = true
+  cfg.security = { allowQrLoginInGroup: false }
   cfg.autoSign.enableTask = true
   cfg.fz.autoSign.enableTask = true
   putUser("10001", [{ uid: "100001", cred: "alpha", nickname: "Alpha" }])
@@ -198,4 +204,34 @@ test("明日方舟单个森空岛绑定失效后仍处理其他已绑定账号",
   assert.equal(rendered[0].data.skip, 1)
   assert.equal(rendered[0].data.total, 3)
   assert.equal((await getUserData("10002")).active, 1)
+})
+
+for (const isMaster of [false, true]) {
+  test(`帮助菜单账号分类展示群聊扫码设置与主人权限（isMaster=${isMaster}）`, async () => {
+    const { app } = instance(enduid)
+    app.e.isMaster = isMaster
+    await app.help()
+    const accountSection = rendered[0].data.sections.find(section => section.title === "账号")
+    const command = accountSection.items.find(item => item.cmd.includes("群聊扫码登录"))
+    assert.ok(command)
+    assert.match(command.cmd, /#zmd群聊扫码登录 开启/)
+    assert.match(command.cmd, /关闭/)
+    assert.equal(command.badge, "MASTER")
+    assert.match(command.desc, /仅主人/)
+    assert.match(command.desc, /当前已关闭/)
+    if (!isMaster) {
+      assert.equal(rendered[0].data.sections.some(section => section.items.some(item => item.name === "后端Token")), false)
+    }
+  })
+}
+
+test("帮助图片不可用时文字菜单同样展示群聊扫码设置且反映开关状态", async () => {
+  renderImage = false
+  cfg.security.allowQrLoginInGroup = true
+  const { app, replies } = instance(enduid)
+  await app.help()
+  assert.match(replies.at(-1), /#zmd群聊扫码登录 开启\/关闭（仅主人）/)
+  assert.match(replies.at(-1), /当前已开启/)
+  const section = rendered[0].data.sections.find(section => section.title === "账号")
+  assert.match(section.items.find(item => item.cmd.includes("群聊扫码登录")).desc, /当前已开启/)
 })

@@ -1,122 +1,143 @@
-/*
-  enduid/daily 专用样式
-
-  对应模板：resources/enduid/daily.html
-  特点：不依赖图片资源，背景与面板效果由 CSS 渐变生成。
-*/
-.container {
-  background: radial-gradient(1200px 600px at 0% 0%, #e0f2fe 0%, rgba(224, 242, 254, 0) 55%),
-    radial-gradient(900px 480px at 100% 0%, #ede9fe 0%, rgba(237, 233, 254, 0) 55%),
-    linear-gradient(180deg, #0b1220 0%, #0b1220 100%);
-  border-radius: 18px;
-  overflow: hidden;
-  color: #e5e7eb;
+body.report-enduid-daily {
+  width: 800px;
 }
-
-.header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.header .title {
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-.header .time {
-  font-size: 14px;
-  opacity: 0.8;
-}
-
-.card {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  padding: 14px 14px 10px 14px;
-  backdrop-filter: blur(8px);
-}
-
-.grid {
+.daily-composition {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 14px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 36px;
+  align-items: stretch;
 }
-
-.kv .k {
-  font-size: 13px;
-  opacity: 0.75;
-  margin-bottom: 2px;
+.daily-metrics {
+  min-width: 0;
 }
-
-.kv .v {
-  font-size: 16px;
-  font-weight: 600;
-  word-break: break-all;
+.daily-resource {
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
 }
-
-.sections {
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
+.daily-resource:first-child {
+  border-top: 3px solid var(--accent);
 }
-
-.section {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 14px;
-  padding: 12px 12px 10px 12px;
-}
-
-.section-title {
+.resource-heading {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 8px;
+  align-items: center;
+  gap: 20px;
 }
-
-.section-title .name {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.section-title .meta {
-  font-size: 13px;
-  opacity: 0.8;
-}
-
-.bar {
-  height: 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-  overflow: hidden;
-}
-
-.bar .fill {
-  height: 100%;
-  border-radius: 999px;
-}
-
-.submeta {
-  margin-top: 8px;
+.resource-name {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
+}
+.resource-name img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  background: #dbe3dc;
+  border-radius: 4px;
+}
+.resource-value {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.resource-value b {
+  font:
+    600 42px/1.2 Arial,
+    sans-serif;
+}
+.resource-value span {
+  color: var(--muted);
+  font-size: 14px;
+}
+.resource-track {
+  height: 6px;
+  background: #dce3dc;
+  margin-top: 17px;
+  overflow: hidden;
+}
+.resource-fill {
+  height: 100%;
+}
+.resource-note {
+  color: var(--accent);
   font-size: 13px;
-  opacity: 0.86;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
 }
-
-.submeta .urgent {
-  color: #fca5a5;
-  opacity: 1;
-  font-weight: 700;
+.resource-note.urgent {
+  color: var(--danger);
 }
-
-.copyright {
-  color: rgba(255, 255, 255, 0.72);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-  opacity: 1;
+.daily-levels {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  color: var(--muted);
+  font-size: 12px;
+  padding-top: 10px;
+}
+.daily-levels b {
+  color: var(--ink);
+  margin-left: 6px;
+  font:
+    600 23px Arial,
+    sans-serif;
+}
+.daily-art {
+  position: relative;
+  margin: 0;
+  background: #e5ebe6;
+  min-height: 510px;
+}
+.daily-art img {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: calc(100% - 32px);
+  object-fit: contain;
+  object-position: center;
+}
+.daily-art figcaption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 12px;
+  color: var(--muted);
+  background: #dce4dc;
+  font:
+    11px Arial,
+    sans-serif;
+}
+.daily-account {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding-top: 22px;
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.daily-account img {
+  width: 52px;
+  height: 52px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.daily-account > div {
+  min-width: 0;
+}
+.daily-account strong {
+  display: block;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.daily-account span {
+  display: block;
+  color: var(--muted);
+  font:
+    12px/1.5 Arial,
+    sans-serif;
+  margin-top: 6px;
 }

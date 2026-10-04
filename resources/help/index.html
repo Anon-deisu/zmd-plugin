@@ -1,74 +1,27 @@
 {{extend defaultLayout}}
-<!--
-  help/index
-
-  渲染入口：apps/enduid.js（帮助指令）
-  期望参数：sections 列表 + avatar/title/subtitle/prefix/time。
--->
-
 {{block 'css'}}
 <link rel="stylesheet" href="{{_res_path}}help/css/index.css" />
-<style>
-  .container {
-    background-image: none !important;
-  }
-</style>
 {{/block}}
-
 {{block 'main'}}
-<div class="help-root">
-  <div class="banner" style="background-image: url('{{_res_path}}help/texture2d/banner_bg.png');">
-    <div class="plugin-icon">
-      {{if avatar}}
-      <img src="{{avatar}}" />
-      {{else}}
-      <img src="{{_res_path}}help/ICON.png" />
-      {{/if}}
-    </div>
-    <div class="banner-main">
-      <div class="banner-title">{{title}}</div>
-      {{if subtitle}}
-      <div class="banner-subtitle">{{subtitle}}</div>
-      {{/if}}
-    </div>
-    <div class="banner-meta">
-      <div class="prefix">前缀 {{prefix}}</div>
-      <div class="time">{{time}}</div>
-    </div>
-  </div>
-
-  <div class="sections">
-    {{each sections s}}
-    <div class="section">
-      <div class="section-header" style="background-image: url('{{_res_path}}help/texture2d/cag_bg.png');">
-        <img class="section-icon" src="{{_res_path}}help/icon_path/通用.png" />
-        <div class="section-headline">
-          <div class="section-title">{{s.title}}</div>
-          {{if s.desc}}
-          <div class="section-desc">{{s.desc}}</div>
-          {{/if}}
-        </div>
+<header class="help-heading">
+  <img class="help-avatar" src="{{avatar || (_res_path + 'help/ICON.png')}}" alt="" />
+  <div class="help-title"><h1>{{title}}</h1>{{if subtitle}}<p>{{subtitle}}</p>{{/if}}</div>
+  <div class="help-meta"><b>{{prefix}}</b><time>{{time}}</time></div>
+</header>
+<div class="help-sections">
+  {{each sections s}}
+  <section class="help-section">
+    <div class="help-section-title"><span class="help-number">{{($index + 1).toString().padStart(2, '0')}}</span><div><h2>{{s.title}}</h2>{{if s.desc}}<p>{{s.desc}}</p>{{/if}}</div></div>
+    <div class="help-commands">
+      {{each s.items it}}
+      <div class="help-command">
+        <div class="command-label"><strong>{{it.name}}</strong>{{if it.badge}}<span>{{it.badge === 'MASTER' ? '仅主人' : it.badge}}</span>{{/if}}</div>
+        <div class="command-text">{{it.cmd}}</div>
+        {{if it.desc}}<div class="command-note">{{it.desc}}</div>{{/if}}
       </div>
-      <div class="section-body">
-        {{each s.items it}}
-        <div class="item">
-          <div class="item-left">
-            <div class="item-name">{{it.name}}</div>
-            <div class="item-cmd">{{it.cmd}}</div>
-          </div>
-          <div class="item-right">
-            {{if it.badge}}
-            <div class="item-badge">{{it.badge}}</div>
-            {{/if}}
-            {{if it.desc}}
-            <div class="item-desc">{{it.desc}}</div>
-            {{/if}}
-          </div>
-        </div>
-        {{/each}}
-      </div>
+      {{/each}}
     </div>
-    {{/each}}
-  </div>
+  </section>
+  {{/each}}
 </div>
 {{/block}}
